@@ -3,7 +3,7 @@ all:
 
 docker:
 	mkdir -p bin
-	docker run --rm -v $(pwd):/app -w /app emscripten/emsdk make
+	docker run --rm -v $(shell pwd):/app -w /app emscripten/emsdk make
 
 native:
 	gcc -o bin/game src/*.c -Iinclude -lraylib -lm
