@@ -1,8 +1,9 @@
 #include <raylib.h>
+#include <stdint.h>
 
 typedef struct {
-    Camera camera;
-    Model cube;
+    uint64_t tick;
+    Camera2D camera;
 } Game;
 
 void LoadSave(void);

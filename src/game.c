@@ -1,42 +1,39 @@
 #include "game.h"
+#include "renderer/renderer.h"
+#include "renderer/assets.h"
 
 static Game game;
 
 void game_init()
 {
-    LoadSave();
+    game.camera.zoom = 1.0f;
 
-    game.camera = (Camera){ { 5.0f, 2.0f, 5.0f }, { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, 45.0f, CAMERA_PERSPECTIVE };
-    
-    Mesh mesh = GenMeshCube(2.0f, 1.0f, 2.0f);
-    mesh.vertices[0] += 1.0f;
-    
-    game.cube = LoadModelFromMesh(mesh);
-    UpdateMeshBuffer(game.cube.meshes[0], 0, mesh.vertices, mesh.vertexCount * 3 * sizeof(float), 0);
+    load_assets();
 }
 
 void game_update()
 {
-    if(IsKeyPressed('X'))
-    {
-        SaveGame("Save data");
-    }
-    // Update
-    UpdateCamera(&game.camera, CAMERA_FIRST_PERSON);
 }
 
 void game_render()
 {
     BeginDrawing();
     ClearBackground(DARKGRAY);
+
     {
-        BeginMode3D(game.camera);
+        BeginMode2D(game.camera);
     
-        DrawModel(game.cube, (Vector3){0,0,0}, 1.0f, WHITE);
-        DrawGrid(10, 1.0);
-    
-        EndMode3D();
+        render_sprite_static_atlas(&grass.atlas, grass_recs[0], (Vector2){80, 210}, 0, WHITE);
+
+        render_sprite_animated(&character[0].shadow, (Vector2){100, 200}, 0, game.tick % sprite_frame_count(&character[0].shadow), WHITE);
+        render_sprite_animated(&character[0].albedo, (Vector2){100, 200}, 1, game.tick % sprite_frame_count(&character[0].albedo), WHITE);
+
+        render_queue_flush();
+
+        EndMode2D();
     }
 
     EndDrawing();
+
+    game.tick++;
 }

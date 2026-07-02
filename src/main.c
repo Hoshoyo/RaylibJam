@@ -52,7 +52,7 @@ void UpdateDrawFrame(void);
 
 int main(void)
 {
-    InitWindow(1600, 900, "Raylib 6.x Jam");
+    InitWindow(720, 720, "Raylib 6.x Jam");
 
     game_init();
     
