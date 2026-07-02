@@ -23,7 +23,6 @@ examples/**/*.c
 [Bb]in/
 [Oo]bj/
 [Ll]og/
-[Rr]es/
 
 # Visual Studio 2015 cache/options directory
 .vs/
