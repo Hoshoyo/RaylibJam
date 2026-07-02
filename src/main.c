@@ -52,7 +52,7 @@ void UpdateDrawFrame(void);
 
 int main(void)
 {
-    InitWindow(1600, 900, "GMTK 2026");
+    InitWindow(1600, 900, "Raylib 6.x Jam");
 
     game_init();
     

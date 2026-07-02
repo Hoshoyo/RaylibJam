@@ -6,7 +6,6 @@ void game_init()
 {
     LoadSave();
 
-    game.logo = LoadTexture("res/HailstonesLogo_Storm.png");
     game.camera = (Camera){ { 5.0f, 2.0f, 5.0f }, { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, 45.0f, CAMERA_PERSPECTIVE };
     
     Mesh mesh = GenMeshCube(2.0f, 1.0f, 2.0f);

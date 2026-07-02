@@ -1,7 +1,6 @@
 #include <raylib.h>
 
 typedef struct {
-    Texture2D logo;
     Camera camera;
     Model cube;
 } Game;
