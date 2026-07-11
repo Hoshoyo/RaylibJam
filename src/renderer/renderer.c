@@ -55,13 +55,15 @@ do_render_sprite_static_atlas(RenderCommand* q)
 {
     Rectangle src = q->sprite.static_atlas.src_rec;
 
+    Vector2 scale = q->sprite.static_atlas.scale;
+
     Vector2 origin = q->sprite.static_atlas.origin;
-    Vector2 new_origin = Vector2Add(origin, (Vector2) { src.width / 2.0f, src.height / 2.0f });
+    Vector2 new_origin = Vector2Add(origin, (Vector2) { (src.width * scale.x) / 2.0f, (src.height * scale.y) / 2.0f });
     Vector2 draw_position = Vector2Subtract(q->position, new_origin);
 
     Color tint = q->tint;
     tint.a = (uint8_t)(q->sprite.static_atlas.opacity * 255.0f);
-    DrawTextureRec(q->sprite.static_atlas.texture, src, draw_position, tint);
+    DrawTexturePro(q->sprite.static_atlas.texture, src, (Rectangle){draw_position.x, draw_position.y, src.width * scale.x, src.height * scale.y}, origin, 0, tint);
 }
 
 static void

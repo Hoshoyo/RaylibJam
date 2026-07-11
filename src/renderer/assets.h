@@ -16,7 +16,9 @@ typedef struct {
 #include "data.h"
 
 static AssetAtlas* assets[] = {
-    &grass
+    &grass,
+    &buildings_albedo,
+    &buildings_shadow,
 };
 
 static void load_assets()
