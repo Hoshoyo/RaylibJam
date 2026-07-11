@@ -3,6 +3,8 @@
 #include "renderer/assets.h"
 
 #include "ui.h"
+#include "item.h"
+#include "font.h"
 
 static Game game;
 static bool ui_hovered_or_active;
@@ -13,8 +15,12 @@ void game_init()
     game.camera.zoom = 0.5f;
     game.camera.target = (Vector2){-360.0f, -360.0f};
 
+    font_init();
     ui_init();
     load_assets();
+    item_render_init(items_sprite.atlas.texture,
+                     rock_icons_recs, ARRAY_LENGTH(rock_icons_recs),
+                     merged_icons_recs, ARRAY_LENGTH(merged_icons_recs));
 }
 
 void game_update()
@@ -95,38 +101,7 @@ void render_map()
     #endif
 }
 
-void
-render_items()
-{
-    // Render special items
-    Vector2 position = (Vector2){0, 100};
-    for(int i = 0; i < ARRAY_LENGTH(merged_icons_recs); ++i)
-    {
-        // Change scale if needed
-        items_sprite.atlas.scale = (Vector2){0.5f, 0.5f};
 
-        // Render atlas, each item is on merged_icons_recs array of rectangles
-        render_sprite_static_atlas_immediate(&items_sprite.atlas, merged_icons_recs[i], position, 0, WHITE);
-
-        // Advance by the size of the item
-        position.x += merged_icons_recs[i].width * items_sprite.atlas.scale.x;
-    }
-
-    position.x = 0;
-    position.y = 160;
-    // Render basic rocks
-    for(int i = 0; i < ARRAY_LENGTH(rock_icons_recs); ++i)
-    {
-        // Change scale if needed
-        items_sprite.atlas.scale = (Vector2){0.5f, 0.5f};
-
-        // Render atlas, each item is on merged_icons_recs array of rectangles
-        render_sprite_static_atlas_immediate(&items_sprite.atlas, rock_icons_recs[i], position, 0, WHITE);
-
-        // Advance by the size of the item
-        position.x += rock_icons_recs[i].width * items_sprite.atlas.scale.x;
-    }
-}
 
 void game_render()
 {
@@ -140,8 +115,6 @@ void game_render()
         //render_map();
 
         EndMode2D();
-
-        render_items();
 
         static int xx = 0;
         if(IsKeyPressed('X'))

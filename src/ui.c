@@ -1,6 +1,8 @@
 #include "ui.h"
 
 #include "game.h"
+#include "item.h"
+#include "font.h"
 #include "ui/hui.h"
 static ColorPalette ui_palette;
 #include "ui/ho_button.c"
@@ -12,9 +14,14 @@ static ColorPalette ui_palette;
 #define FACTORY_MENU_X1 (WINDOW_WIDTH - 30.0f)
 #define FACTORY_MENU_Y1 (WINDOW_WIDTH - 30.0f)
 
-#define UI_FONT_SIZE_TITLE  20
-#define UI_FONT_SIZE_PANEL  16
-#define UI_FONT_SIZE_BODY   12
+// Deferred tooltip — set during the frame, flushed at the very end of ui_render.
+typedef struct {
+    bool        active;
+    const Item* item;
+    float       x;
+    float       y;
+} UiTooltip;
+static UiTooltip ui_tooltip;
 
 static Texture2D tex_close;
 static Texture2D tex_place_item;
@@ -24,10 +31,6 @@ static Texture2D tex_factory;
 static Texture2D tex_research;
 static Texture2D tex_energy;
 static Texture2D tex_merge;
-static Font ui_font_title;
-static Font ui_font_panel;
-static Font ui_font_body;
-
 void ui_init() {
     ui_palette = palette_mountain_ridge;
     tex_close     = LoadTexture("res/ui/close.png");
@@ -38,12 +41,6 @@ void ui_init() {
     tex_research  = LoadTexture("res/ui/research.png");
     tex_energy    = LoadTexture("res/ui/battery.png");
     tex_merge     = LoadTexture("res/ui/merge.png");
-    ui_font_title = LoadFontEx("res/ui/fonts/Barlow_Semi_Condensed/BarlowSemiCondensed-SemiBold.ttf", UI_FONT_SIZE_TITLE, 0, 0);
-    ui_font_panel = LoadFontEx("res/ui/fonts/Barlow_Semi_Condensed/BarlowSemiCondensed-SemiBold.ttf", UI_FONT_SIZE_PANEL, 0, 0);
-    ui_font_body  = LoadFontEx("res/ui/fonts/Barlow_Semi_Condensed/BarlowSemiCondensed-SemiBold.ttf", UI_FONT_SIZE_BODY,  0, 0);
-    SetTextureFilter(ui_font_title.texture, TEXTURE_FILTER_POINT);
-    SetTextureFilter(ui_font_panel.texture, TEXTURE_FILTER_POINT);
-    SetTextureFilter(ui_font_body.texture,  TEXTURE_FILTER_POINT);
 }
 
 // circle button with icon shifted up + label text at the bottom
@@ -79,7 +76,7 @@ static HoUiInteraction ho_button_circle_icon_label(Vector2 center, float radius,
         icon_dest, (Vector2){0, 0}, 0.0f, WHITE);
 
     // label: centered horizontally, slightly toward center of button
-    Font font = ui_font_panel;
+    Font font = *font_get(FONT_SIZE_PANEL);
     Vector2 sz = MeasureTextEx(font, label, font.baseSize, 0);
     Vector2 text_pos = (Vector2){
         center.x - floorf(sz.x * 0.5f),
@@ -108,7 +105,7 @@ static void render_factory_menu_base_end(bool* open, float window_height) {
     DrawRectangleRec(topbar_rec, CLITERAL(Color){ 150, 150, 150, 255 });
 
     // title
-    Font font = ui_font_title;
+    Font font = *font_get(FONT_SIZE_TITLE);
     const float title_font_size = font.baseSize;
     const char* title = "FACTORY MENU";
     Vector2 title_size = MeasureTextEx(font, title, title_font_size, 0);
@@ -163,7 +160,42 @@ static void draw_raised_panel(float panel_x, float panel_y, float panel_width, f
     DrawRectangle((int)(panel_x + panel_width - pbevel), (int)panel_y, (int)pbevel, (int)panel_height, CLITERAL(Color){ 85, 85, 85, 255 });
 }
 
-static float render_item_popper_panel(float start_y) {
+// Renders an item description tooltip at (x, y) — top-left corner.
+// Uses a plain raised panel with dark background.
+static void render_item_description_panel(const Item* item, float x, float y)
+{
+    const float padding    = 8.0f;
+    const float panel_w    = 140.0f;
+    Font* font             = font_get(FONT_SIZE_BODY);
+    const float line_h     = font->baseSize + 5.0f;
+    const float panel_h    = padding + line_h * 3.0f + padding;
+
+    const Color bg  = CLITERAL(Color){  30,  30,  30, 230 };
+    const Color fg  = CLITERAL(Color){ 220, 220, 220, 255 };
+    const Color brd = CLITERAL(Color){  80,  80,  80, 255 };
+
+    DrawRectangle((int)x, (int)y, (int)panel_w, (int)panel_h, bg);
+    DrawRectangleLinesEx((Rectangle){x, y, panel_w, panel_h}, 1.0f, brd);
+
+    float tx = x + padding;
+    float ty = y + padding;
+
+    // Name — colored by quality tier
+    Color name_color;
+    if      (item->quality < 1.5f) name_color = CLITERAL(Color){ 160, 160, 160, 255 };
+    else if (item->quality < 3.0f) name_color = CLITERAL(Color){  80, 200,  80, 255 };
+    else if (item->quality < 4.0f) name_color = CLITERAL(Color){  30, 180,  30, 255 };
+    else                           name_color = CLITERAL(Color){ 220,  60,  60, 255 };
+    DrawTextEx(*font, TextToUpper(item->name), (Vector2){tx, ty}, font->baseSize, 0, name_color);
+    ty += line_h;
+
+    DrawTextEx(*font, TextFormat("QUALITY: %.2f", item->quality), (Vector2){tx, ty}, font->baseSize, 0, fg);
+    ty += line_h;
+
+    DrawTextEx(*font, "PLACEMENT:", (Vector2){tx, ty}, font->baseSize, 0, fg);
+}
+
+static float render_item_popper_panel(float start_y, bool* has_item, Item* slot_item) {
     const float window_x0 = 30.0f;
     const float window_x1 = WINDOW_WIDTH - 30.0f;
     const float panel_padding = 14.0f;
@@ -171,7 +203,7 @@ static float render_item_popper_panel(float start_y) {
     const float large_slot_size = 80.0f;
     const float section_gap = 16.0f;
 
-    Font font = ui_font_panel;
+    Font font = *font_get(FONT_SIZE_PANEL);
     const float title_font_size = font.baseSize;
     const float title_area_height = title_font_size + 12.0f;
 
@@ -194,21 +226,42 @@ static float render_item_popper_panel(float start_y) {
     const float content_y = start_y + panel_padding + title_area_height + 8.0f;
     const float center_y  = content_y + floorf(content_height * 0.5f);
 
-    // new item button
-    ho_button_circle_texture((Vector2){content_x + btn_radius, center_y}, btn_radius, tex_new);
+    // new item button — generates a random item into the slot
+    if (ho_button_circle_texture((Vector2){content_x + btn_radius, center_y}, btn_radius, tex_new) & HOUI_INTERACT_CLICKED)
+    {
+        *slot_item = item_generate();
+        *has_item = true;
+    }
 
     // large slot
     float slot_x = content_x + btn_radius * 2.0f + section_gap;
     float slot_y = content_y + floorf((content_height - large_slot_size) * 0.5f);
     Rectangle large_slot = (Rectangle){slot_x, slot_y, large_slot_size, large_slot_size};
     draw_sunken_slot(large_slot);
-    DrawTexturePro(tex_close,
-        (Rectangle){0, 0, tex_close.width, tex_close.height},
-        large_slot, (Vector2){0, 0}, 0.0f, WHITE);
+    if (*has_item)
+    {
+        const float item_size = large_slot_size - 16.0f;
+        float item_x = slot_x + floorf((large_slot_size - item_size) * 0.5f);
+        float item_y = slot_y + floorf((large_slot_size - item_size) * 0.5f);
+        item_render(slot_item, item_x, item_y, item_size, false);
+    }
 
-    // trash button
+    // tooltip: defer to end of frame so it renders on top of everything
+    if (*has_item && CheckCollisionPointRec(GetMousePosition(), large_slot))
+    {
+        Vector2 cursor = GetMousePosition();
+        ui_tooltip.active = true;
+        ui_tooltip.item   = slot_item;
+        ui_tooltip.x      = cursor.x + 12.0f;
+        ui_tooltip.y      = cursor.y + 4.0f;
+    }
+
+    // trash button — clears the slot
     float trash_x = slot_x + large_slot_size + section_gap + btn_radius;
-    ho_button_circle_texture((Vector2){trash_x, center_y}, btn_radius, tex_trash);
+    if (ho_button_circle_texture((Vector2){trash_x, center_y}, btn_radius, tex_trash) & HOUI_INTERACT_CLICKED)
+    {
+        *has_item = false;
+    }
 
     return start_y + panel_height;
 }
@@ -226,7 +279,7 @@ static float render_item_crafter_panel(float start_y) {
     const float action_btn_height = 34.0f;
     const float action_area_height = action_btn_height + 14.0f;
 
-    Font font = ui_font_panel;
+    Font font = *font_get(FONT_SIZE_PANEL);
     const float title_font_size = font.baseSize;
     const float title_area_height = title_font_size + 12.0f;
 
@@ -271,20 +324,23 @@ static float render_item_crafter_panel(float start_y) {
     // Generate Energy (dark yellow)
     ho_button_icon_label(
         (Rectangle){btns_x, btns_y, action_btn_width, action_btn_height},
-        tex_energy, icon_size, ui_font_body, "GENERATE ENERGY", (Color){160,120,20,255});
+        tex_energy, icon_size, *font_get(FONT_SIZE_BODY), "GENERATE ENERGY", (Color){160,120,20,255});
     // Send to Research (light blue)
     ho_button_icon_label(
         (Rectangle){btns_x + action_btn_width + action_btn_gap, btns_y, action_btn_width, action_btn_height},
-        tex_research, icon_size, ui_font_body, "SEND TO RESEARCH", (Color){60,130,170,255});
+        tex_research, icon_size, *font_get(FONT_SIZE_BODY), "SEND TO RESEARCH", (Color){60,130,170,255});
     // Merge (dark red)
     ho_button_icon_label(
         (Rectangle){btns_x + (action_btn_width + action_btn_gap) * 2.0f, btns_y, action_btn_width, action_btn_height},
-        tex_merge, icon_size, ui_font_body, "MERGE", (Color){140,30,30,255});
+        tex_merge, icon_size, *font_get(FONT_SIZE_BODY), "MERGE", (Color){140,30,30,255});
 
     return start_y + panel_height;
 }
 
 static void render_factory_menu(bool* open) {
+    static bool popper_has_item = false;
+    static Item popper_slot_item;
+
     // compute total window height from panel sizes before drawing anything
     const float btn_size = 24.0f;
     const float btn_margin = 6.0f;
@@ -293,7 +349,7 @@ static void render_factory_menu(bool* open) {
     // compute panel heights without rendering (panels return bottom y)
     // popper panel height
     {
-        Font font = ui_font_panel;
+        Font font = *font_get(FONT_SIZE_PANEL);
         const float panel_padding = 14.0f;
         const float large_slot_size = 80.0f;
         const float title_area_height = font.baseSize + 12.0f;
@@ -316,7 +372,7 @@ static void render_factory_menu(bool* open) {
 
         // draw panels (no gaps)
         float y = FACTORY_MENU_Y0 + topbar_height;
-        y = render_item_popper_panel(y);
+        y = render_item_popper_panel(y, &popper_has_item, &popper_slot_item);
         render_item_crafter_panel(y);
 
         // draw topbar and outline on top
@@ -346,5 +402,12 @@ void ui_render()
 
     if (factory_menu_open) {
         render_factory_menu(&factory_menu_open);
+    }
+
+    // flush deferred tooltip on top of everything
+    if (ui_tooltip.active)
+    {
+        render_item_description_panel(ui_tooltip.item, ui_tooltip.x, ui_tooltip.y);
+        ui_tooltip.active = false;
     }
 }
