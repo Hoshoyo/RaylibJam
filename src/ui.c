@@ -38,9 +38,9 @@ void ui_init() {
     tex_research  = LoadTexture("res/ui/research.png");
     tex_energy    = LoadTexture("res/ui/battery.png");
     tex_merge     = LoadTexture("res/ui/merge.png");
-    ui_font_title = LoadFontEx("fonts/Barlow_Semi_Condensed/BarlowSemiCondensed-SemiBold.ttf", UI_FONT_SIZE_TITLE, 0, 0);
-    ui_font_panel = LoadFontEx("fonts/Barlow_Semi_Condensed/BarlowSemiCondensed-SemiBold.ttf", UI_FONT_SIZE_PANEL, 0, 0);
-    ui_font_body  = LoadFontEx("fonts/Barlow_Semi_Condensed/BarlowSemiCondensed-SemiBold.ttf", UI_FONT_SIZE_BODY,  0, 0);
+    ui_font_title = LoadFontEx("res/ui/fonts/Barlow_Semi_Condensed/BarlowSemiCondensed-SemiBold.ttf", UI_FONT_SIZE_TITLE, 0, 0);
+    ui_font_panel = LoadFontEx("res/ui/fonts/Barlow_Semi_Condensed/BarlowSemiCondensed-SemiBold.ttf", UI_FONT_SIZE_PANEL, 0, 0);
+    ui_font_body  = LoadFontEx("res/ui/fonts/Barlow_Semi_Condensed/BarlowSemiCondensed-SemiBold.ttf", UI_FONT_SIZE_BODY,  0, 0);
     SetTextureFilter(ui_font_title.texture, TEXTURE_FILTER_POINT);
     SetTextureFilter(ui_font_panel.texture, TEXTURE_FILTER_POINT);
     SetTextureFilter(ui_font_body.texture,  TEXTURE_FILTER_POINT);

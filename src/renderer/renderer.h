@@ -65,6 +65,7 @@ typedef struct {
 typedef struct {
     Sprite   sprite;
     Vector2  position;
+    Vector2  offset;
     Color    tint;
     int32_t  layer;
     int32_t  original_index;
@@ -73,5 +74,7 @@ typedef struct {
 void render_queue_flush();
 void render_sprite_animated(SpriteAnimated* sprite, Vector2 position, int32_t layer, uint32_t frame_index, Color tint);
 void render_sprite_static_atlas(SpriteStaticAtlas* atlas, Rectangle src, Vector2 position, int32_t layer, Color tint);
+void render_sprite_static_atlas_immediate(SpriteStaticAtlas* atlas, Rectangle src, Vector2 position, int32_t layer, Color tint);
+void render_sprite_static_atlas_offset(SpriteStaticAtlas* atlas, Rectangle src, Vector2 offset, Vector2 position, int32_t layer, Color tint);
 
 int sprite_frame_count(SpriteAnimated* sprite);
