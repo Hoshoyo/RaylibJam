@@ -125,7 +125,7 @@ void game_render()
         //debug_slider(0, &building_offsets[xx].x, -200.0f, 200.0f);
         //debug_slider(1, &building_offsets[xx].y, -200.0f, 200.0f);
 
-        ui_render();
+        ui_hovered_or_active = ui_render();
     }
 
     EndDrawing();

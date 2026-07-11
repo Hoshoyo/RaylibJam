@@ -23,6 +23,41 @@ typedef struct {
 } UiTooltip;
 static UiTooltip ui_tooltip;
 
+// ── Slot / drag / drop types ─────────────────────────────────────────────────
+
+#define FACTORY_SLOT_COUNT 7
+typedef enum {
+    SLOT_POPPER     = 0,
+    SLOT_CRAFTER_0,
+    SLOT_CRAFTER_1,
+    SLOT_CRAFTER_2,
+    SLOT_CRAFTER_3,
+    SLOT_CRAFTER_4,
+    SLOT_CRAFTER_5,
+} FactorySlotId;
+
+typedef struct {
+    bool has_item[FACTORY_SLOT_COUNT];
+    Item items[FACTORY_SLOT_COUNT];
+} FactoryMenuState;
+static FactoryMenuState factory_state;
+
+// Frame-persistent: survives across frames while the mouse button is held.
+typedef struct {
+    bool          active;
+    Item          item;
+    FactorySlotId source_slot;
+} UiDrag;
+static UiDrag ui_drag;
+
+// Frame-transient: reset at the top of ui_render every frame.
+typedef struct {
+    bool          any_hovered;
+    FactorySlotId hovered_slot;
+    bool          trash_hovered;
+} UiDropTarget;
+static UiDropTarget ui_drop_target;
+
 static Texture2D tex_close;
 static Texture2D tex_place_item;
 static Texture2D tex_new;
@@ -31,6 +66,7 @@ static Texture2D tex_factory;
 static Texture2D tex_research;
 static Texture2D tex_energy;
 static Texture2D tex_merge;
+
 void ui_init() {
     ui_palette = palette_mountain_ridge;
     tex_close     = LoadTexture("res/ui/close.png");
@@ -160,6 +196,52 @@ static void draw_raised_panel(float panel_x, float panel_y, float panel_width, f
     DrawRectangle((int)(panel_x + panel_width - pbevel), (int)panel_y, (int)pbevel, (int)panel_height, CLITERAL(Color){ 85, 85, 85, 255 });
 }
 
+// Draws one item slot: background, hover highlight (during drag), item icon,
+// drag-start on click, drop-target registration, and tooltip deferral.
+static void draw_item_slot(Rectangle rect, FactorySlotId id, FactoryMenuState* state)
+{
+    bool is_drag_source = ui_drag.active && ui_drag.source_slot == id;
+    bool hovered = CheckCollisionPointRec(GetMousePosition(), rect);
+
+    draw_sunken_slot(rect);
+
+    // Highlight as valid drop target when dragging over it
+    if (ui_drag.active && hovered) {
+        ui_drop_target.any_hovered  = true;
+        ui_drop_target.hovered_slot = id;
+        DrawRectangleLinesEx(rect, 2.0f, CLITERAL(Color){ 255, 220, 60, 255 });
+    }
+
+    // Draw item (hidden while being dragged — rendered as ghost on cursor instead)
+    if (state->has_item[id] && !is_drag_source) {
+        float item_size = rect.width - 8.0f;
+        if (item_size < 4.0f) item_size = 4.0f;
+        float ix = rect.x + floorf((rect.width  - item_size) * 0.5f);
+        float iy = rect.y + floorf((rect.height - item_size) * 0.5f);
+        item_render(&state->items[id], ix, iy, item_size, false);
+    }
+
+    // Begin drag on click
+    if (!ui_drag.active && hovered && state->has_item[id]
+        && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+    {
+        ui_drag.active      = true;
+        ui_drag.item        = state->items[id];
+        ui_drag.source_slot = id;
+        state->has_item[id] = false;
+    }
+
+    // Tooltip — suppressed while any drag is active
+    if (!ui_drag.active && hovered && state->has_item[id])
+    {
+        Vector2 cursor = GetMousePosition();
+        ui_tooltip.active = true;
+        ui_tooltip.item   = &state->items[id];
+        ui_tooltip.x      = cursor.x + 12.0f;
+        ui_tooltip.y      = cursor.y + 4.0f;
+    }
+}
+
 // Renders an item description tooltip at (x, y) — top-left corner.
 // Uses a plain raised panel with dark background.
 static void render_item_description_panel(const Item* item, float x, float y)
@@ -195,7 +277,7 @@ static void render_item_description_panel(const Item* item, float x, float y)
     DrawTextEx(*font, "PLACEMENT:", (Vector2){tx, ty}, font->baseSize, 0, fg);
 }
 
-static float render_item_popper_panel(float start_y, bool* has_item, Item* slot_item) {
+static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
     const float window_x0 = 30.0f;
     const float window_x1 = WINDOW_WIDTH - 30.0f;
     const float panel_padding = 14.0f;
@@ -226,47 +308,36 @@ static float render_item_popper_panel(float start_y, bool* has_item, Item* slot_
     const float content_y = start_y + panel_padding + title_area_height + 8.0f;
     const float center_y  = content_y + floorf(content_height * 0.5f);
 
-    // new item button — generates a random item into the slot
+    // new item button — generates a random item into the popper slot
     if (ho_button_circle_texture((Vector2){content_x + btn_radius, center_y}, btn_radius, tex_new) & HOUI_INTERACT_CLICKED)
     {
-        *slot_item = item_generate();
-        *has_item = true;
+        state->items[SLOT_POPPER]    = item_generate();
+        state->has_item[SLOT_POPPER] = true;
     }
 
     // large slot
     float slot_x = content_x + btn_radius * 2.0f + section_gap;
     float slot_y = content_y + floorf((content_height - large_slot_size) * 0.5f);
-    Rectangle large_slot = (Rectangle){slot_x, slot_y, large_slot_size, large_slot_size};
-    draw_sunken_slot(large_slot);
-    if (*has_item)
-    {
-        const float item_size = large_slot_size - 16.0f;
-        float item_x = slot_x + floorf((large_slot_size - item_size) * 0.5f);
-        float item_y = slot_y + floorf((large_slot_size - item_size) * 0.5f);
-        item_render(slot_item, item_x, item_y, item_size, false);
-    }
+    draw_item_slot((Rectangle){slot_x, slot_y, large_slot_size, large_slot_size}, SLOT_POPPER, state);
 
-    // tooltip: defer to end of frame so it renders on top of everything
-    if (*has_item && CheckCollisionPointRec(GetMousePosition(), large_slot))
-    {
-        Vector2 cursor = GetMousePosition();
-        ui_tooltip.active = true;
-        ui_tooltip.item   = slot_item;
-        ui_tooltip.x      = cursor.x + 12.0f;
-        ui_tooltip.y      = cursor.y + 4.0f;
-    }
+    // trash button
+    Vector2 trash_center = (Vector2){slot_x + large_slot_size + section_gap + btn_radius, center_y};
 
-    // trash button — clears the slot
-    float trash_x = slot_x + large_slot_size + section_gap + btn_radius;
-    if (ho_button_circle_texture((Vector2){trash_x, center_y}, btn_radius, tex_trash) & HOUI_INTERACT_CLICKED)
+    // register as drop target when dragging over trash
+    if (ui_drag.active && CheckCollisionPointCircle(GetMousePosition(), trash_center, btn_radius))
+        ui_drop_target.trash_hovered = true;
+
+    // draw and handle normal click (clears slot when not dragging)
+    if (ho_button_circle_texture(trash_center, btn_radius, tex_trash) & HOUI_INTERACT_CLICKED)
     {
-        *has_item = false;
+        if (!ui_drag.active)
+            state->has_item[SLOT_POPPER] = false;
     }
 
     return start_y + panel_height;
 }
 
-static float render_item_crafter_panel(float start_y) {
+static float render_item_crafter_panel(float start_y, FactoryMenuState* state) {
     const float window_x0 = 30.0f;
     const float window_x1 = WINDOW_WIDTH - 30.0f;
     const float panel_padding = 14.0f;
@@ -305,10 +376,8 @@ static float render_item_crafter_panel(float start_y) {
                 grid_y + row * (small_slot_size + slot_gap),
                 small_slot_size, small_slot_size
             };
-            draw_sunken_slot(slot);
-            DrawTexturePro(tex_close,
-                (Rectangle){0, 0, tex_close.width, tex_close.height},
-                slot, (Vector2){0, 0}, 0.0f, WHITE);
+            FactorySlotId slot_id = (FactorySlotId)(SLOT_CRAFTER_0 + row * grid_cols + col);
+            draw_item_slot(slot, slot_id, state);
         }
     }
 
@@ -338,9 +407,6 @@ static float render_item_crafter_panel(float start_y) {
 }
 
 static void render_factory_menu(bool* open) {
-    static bool popper_has_item = false;
-    static Item popper_slot_item;
-
     // compute total window height from panel sizes before drawing anything
     const float btn_size = 24.0f;
     const float btn_margin = 6.0f;
@@ -372,17 +438,21 @@ static void render_factory_menu(bool* open) {
 
         // draw panels (no gaps)
         float y = FACTORY_MENU_Y0 + topbar_height;
-        y = render_item_popper_panel(y, &popper_has_item, &popper_slot_item);
-        render_item_crafter_panel(y);
+        y = render_item_popper_panel(y, &factory_state);
+        render_item_crafter_panel(y, &factory_state);
 
         // draw topbar and outline on top
         render_factory_menu_base_end(open, window_height);
     }
 }
 
-void ui_render()
+bool ui_render()
 {
     static bool factory_menu_open = false;
+    bool capturing = factory_menu_open || ui_drag.active;
+
+    // reset frame-transient drop target
+    ui_drop_target = (UiDropTarget){0};
 
     // top-right buttons (factory + research)
     const float btn_radius = 36.0f;
@@ -404,10 +474,50 @@ void ui_render()
         render_factory_menu(&factory_menu_open);
     }
 
+    // drop resolution — after all slots have registered their hover state
+    if (ui_drag.active && IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+    {
+        if (ui_drop_target.trash_hovered) {
+            // discard item
+        } else if (ui_drop_target.any_hovered) {
+            FactorySlotId target = ui_drop_target.hovered_slot;
+            if (factory_state.has_item[target]) {
+                // swap
+                Item tmp                              = factory_state.items[target];
+                factory_state.items[target]           = ui_drag.item;
+                factory_state.has_item[target]        = true;
+                factory_state.items[ui_drag.source_slot]    = tmp;
+                factory_state.has_item[ui_drag.source_slot] = true;
+            } else {
+                // move
+                factory_state.items[target]    = ui_drag.item;
+                factory_state.has_item[target] = true;
+            }
+        } else {
+            // return to source slot
+            factory_state.items[ui_drag.source_slot]    = ui_drag.item;
+            factory_state.has_item[ui_drag.source_slot] = true;
+        }
+        ui_drag.active = false;
+    }
+
+    // draw drag ghost centered on cursor (above everything)
+    if (ui_drag.active)
+    {
+        const float ghost_size = 40.0f;
+        Vector2 cursor = GetMousePosition();
+        item_render(&ui_drag.item,
+            cursor.x - ghost_size * 0.5f,
+            cursor.y - ghost_size * 0.5f,
+            ghost_size, false);
+    }
+
     // flush deferred tooltip on top of everything
     if (ui_tooltip.active)
     {
         render_item_description_panel(ui_tooltip.item, ui_tooltip.x, ui_tooltip.y);
         ui_tooltip.active = false;
     }
+
+    return capturing;
 }
