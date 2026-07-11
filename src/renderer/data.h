@@ -33,6 +33,17 @@ static Rectangle building_recs[6] = {
 static AssetAtlas buildings_albedo = { {"res/building/BuildingsIso1024x1024_Albedo.png", false, {0}, {0}, {1.0f, 1.0f}, 1.0f, 1, {0}}, sizeof(building_recs) / sizeof(*building_recs), building_recs};
 static AssetAtlas buildings_shadow = { {"res/building/BuildingsIso1024x1024_Shadow.png", false, {0}, {0}, {1.0f, 1.0f}, 0.7f, 1, {0}}, sizeof(building_recs) / sizeof(*building_recs), building_recs};
 
+static Rectangle pole_recs[6] = {
+  {25.000000, 25.000000, 180.000000, 180.000000},
+  {272.000000, 25.000000, 180.000000, 180.000000},
+  {272.000000, 222.000000, 180.000000, 180.000000},
+  {30.000000, 222.000000, 180.000000, 180.000000},
+  {30.000000, 413.000000, 180.000000, 180.000000},
+  {271.000000, 413.000000, 180.000000, 180.000000},
+};
+static AssetAtlas pole_sprite = { {"res/building/PoleIso1.png", false, {0}, {0}, {1.0f, 1.0f}, 1.0f, 1, {0}}, sizeof(pole_recs) / sizeof(*pole_recs), pole_recs};
+
+
 /*
   const char* path;
   bool        loaded;

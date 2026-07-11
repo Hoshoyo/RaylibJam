@@ -2,17 +2,59 @@
 #include "renderer/renderer.h"
 #include "renderer/assets.h"
 
+#include "ui/hui.h"
+static ColorPalette ui_palette;
+#include "ui/ho_button.c"
+#include "ui/ho_label.c"
+#include "ui/ho_slider.c"
+
 static Game game;
 
 void game_init()
 {
     game.camera.zoom = 0.5f;
+    game.camera.target = (Vector2){360.0f, 360.0f};
+
+    ui_palette = palette_mountain_ridge;
 
     load_assets();
 }
 
 void game_update()
 {
+    // Camera panning control
+    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+    {
+        Vector2 delta = GetMouseDelta();
+        delta = Vector2Scale(delta, -1.0f / game.camera.zoom);
+        game.camera.target = Vector2Add(game.camera.target, delta);
+    }
+
+    // Zoom control
+    float wheel = GetMouseWheelMove();
+    if(wheel > 0 && game.camera.zoom < 2.0f)      game.camera.zoom *= 2.0f;
+    else if(wheel < 0 && game.camera.zoom >= 0.5f) game.camera.zoom /= 2.0f;
+}
+
+void render_ui()
+{
+    // Button
+    if(ho_button((Vector2){360.0f,360.0f}, (Vector2){100, 40}, GetFontDefault(), "Button") & HOUI_INTERACT_CLICKED)
+    {
+        TraceLog(LOG_INFO, "Clicked!");
+    }
+
+    // Label
+    ho_label((Vector2){360.0f,360.0f + 50.0f}, (Vector2){100, 40}, GetFontDefault(), "Label");
+
+    // Slider
+    static bool slider_active = false;
+    static float value = 0.0f;
+    HoUiInteraction interaction = ho_slider_circle((Vector2){360.0f,360.0f + 2*50.0f}, slider_active, (Vector2){100, 2}, &value, 0, 100.0f);
+    if(interaction & HOUI_INTERACT_CLICKED)
+        slider_active = true;
+    if(interaction & HOUI_INTERACT_RELEASED)
+        slider_active = false;
 }
 
 void game_render()
@@ -36,12 +78,16 @@ void game_render()
             }
         }
 
+        render_sprite_static_atlas(&pole_sprite.atlas, pole_sprite.recs[0], (Vector2){20, 90}, 0, WHITE);
+
         render_sprite_animated(&character[0].shadow, (Vector2){100, 200}, 0, game.tick % sprite_frame_count(&character[0].shadow), WHITE);
         render_sprite_animated(&character[0].albedo, (Vector2){100, 200}, 1, game.tick % sprite_frame_count(&character[0].albedo), WHITE);
 
         //DrawCircle(360, 360, 3.0f, RED);
 
         EndMode2D();
+
+        render_ui();
     }
 
     EndDrawing();

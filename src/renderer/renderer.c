@@ -6,6 +6,8 @@
 static RenderCommand render_queue[RENDER_QUEUE_SIZE];
 static int32_t queue_index;
 
+#define DEBUG_DRAW_SPRITE_BOX 1
+
 void render_queue_flush();
 
 void render_sprite_animated(SpriteAnimated* sprite, Vector2 position, int32_t layer, uint32_t frame_index, Color tint)
@@ -63,7 +65,12 @@ do_render_sprite_static_atlas(RenderCommand* q)
 
     Color tint = q->tint;
     tint.a = (uint8_t)(q->sprite.static_atlas.opacity * 255.0f);
-    DrawTexturePro(q->sprite.static_atlas.texture, src, (Rectangle){draw_position.x, draw_position.y, src.width * scale.x, src.height * scale.y}, origin, 0, tint);
+    Rectangle dst_rect = (Rectangle){draw_position.x, draw_position.y, src.width * scale.x, src.height * scale.y};
+    DrawTexturePro(q->sprite.static_atlas.texture, src, dst_rect, origin, 0, tint);
+
+#if DEBUG_DRAW_SPRITE_BOX
+	DrawRectangleLinesEx(dst_rect, 2, RED);
+#endif
 }
 
 static void
@@ -91,9 +98,9 @@ do_render_sprite_animated(RenderCommand* q)
 
 #if DEBUG_DRAW_SPRITE_BOX
 	Vector2 dpos = q->position;
-	if (q->anim.flags & SPRITE_FLAG_CENTERED)
+	if (q->sprite.animated.flags & SPRITE_FLAG_CENTERED)
 		dpos = Vector2Subtract(dpos, (Vector2) { w / 2.0f, h / 2.0f });
-	DrawRectangleLines((s32)dpos.x, (s32)dpos.y, src.width, src.height, RED);
+	DrawRectangleLines((int)dpos.x, (int)dpos.y, src.width, src.height, RED);
 	Color dimyellow = ColorAlpha(YELLOW, .2f);
 	DrawLine(dpos.x, dpos.y + src.height / 2, dpos.x + src.width, dpos.y + src.height / 2, dimyellow);
 	DrawLine(dpos.x + src.width / 2, dpos.y, dpos.x + src.width / 2, dpos.y + src.height, dimyellow);

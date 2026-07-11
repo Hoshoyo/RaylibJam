@@ -6,4 +6,4 @@ native:
 
 docker:
 	mkdir -p bin
-	docker run --rm -v $(shell pwd):/app -w /app emscripten/emsdk make
+	docker run --rm -v $(shell pwd):/app -w /app emscripten/emsdk:6.0.2 make
