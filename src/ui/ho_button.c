@@ -43,6 +43,127 @@ ho_button(Vector2 position, Vector2 size, Font font, const char* text)
 }
 
 HoUiInteraction
+ho_button_circle(Vector2 center, float radius, Font font, const char* text, bool interactive)
+{
+    HoUiInteraction result = {0};
+
+    // Color scheme
+    Color color_background = ui_palette.colors[PALETTE_DARK];
+    Color color_text = ui_palette.colors[PALETTE_LIGHT];
+    Color color_pop = ui_palette.colors[PALETTE_POP];
+    Color color_border = ColorBrightness(color_background, 0.1f);
+
+    float border_width = 2.0f;
+
+    if(interactive && CheckCollisionPointCircle(GetMousePosition(), center, radius))
+    {
+        result |= HOUI_INTERACT_HOVERED;
+        if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+            result |= HOUI_INTERACT_CLICKED;
+        if(IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))
+            result |= HOUI_INTERACT_RIGHT_CLICKED;
+    }
+
+    bool hovered = (result & HOUI_INTERACT_HOVERED) != 0;
+    DrawCircleV(center, radius + border_width, color_border);
+    DrawCircleV(center, radius, (hovered) ? color_pop : color_background);
+
+    Vector2 text_size = MeasureTextEx(font, text, font.baseSize, 0);
+
+    Vector2 text_pos;
+    text_pos.x = center.x + floorf(-text_size.x / 2.0f);
+    text_pos.y = center.y + floorf(-text_size.y / 2.0f);
+
+    DrawTextEx(font, text, text_pos, font.baseSize, 0, (hovered) ? color_background : color_text);
+
+    return result;
+}
+
+HoUiInteraction
+ho_button_circle_texture(Vector2 center, float radius, Texture2D texture)
+{
+    HoUiInteraction result = {0};
+
+    Color color_background = ui_palette.colors[PALETTE_DARK];
+    Color color_border = ColorBrightness(color_background, 0.1f);
+
+    float border_width = 2.0f;
+
+    if(CheckCollisionPointCircle(GetMousePosition(), center, radius))
+    {
+        result |= HOUI_INTERACT_HOVERED;
+        if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+            result |= HOUI_INTERACT_CLICKED;
+        if(IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))
+            result |= HOUI_INTERACT_RIGHT_CLICKED;
+    }
+
+    bool hovered = (result & HOUI_INTERACT_HOVERED) != 0;
+    DrawCircleV(center, radius + border_width, color_border);
+    DrawCircleV(center, radius, (hovered) ? ColorBrightness(color_background, 0.3f) : color_background);
+
+    // texture centered inside the circle
+    float tex_size = radius * 1.2f;
+    Rectangle dest = (Rectangle){
+        center.x - tex_size / 2.0f,
+        center.y - tex_size / 2.0f,
+        tex_size, tex_size
+    };
+    DrawTexturePro(texture,
+        (Rectangle){0, 0, texture.width, texture.height},
+        dest,
+        (Vector2){0, 0}, 0.0f,
+        WHITE);
+
+    return result;
+}
+
+// Rectangular button with an icon left-aligned and label centered in remaining space.
+// font is used for the label. icon_size controls the icon square size.
+HoUiInteraction
+ho_button_icon_label(Rectangle rect, Texture2D icon, float icon_size, Font font, const char* label, Color base_color)
+{
+    HoUiInteraction result = {0};
+
+    bool hov     = CheckCollisionPointRec(GetMousePosition(), rect);
+    bool pressed = hov && IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+
+    if (hov) {
+        result |= HOUI_INTERACT_HOVERED;
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))  result |= HOUI_INTERACT_CLICKED;
+        if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) result |= HOUI_INTERACT_RIGHT_CLICKED;
+    }
+
+    // background
+    DrawRectangleRec(rect, hov ? ColorBrightness(base_color, 0.25f) : base_color);
+
+    // bevel: raised normally, inverted when pressed
+    Color bevel_lt = pressed ? (Color){80,80,80,255}   : (Color){210,210,210,255};
+    Color bevel_rb = pressed ? (Color){210,210,210,255} : (Color){80,80,80,255};
+    DrawRectangle((int)rect.x, (int)rect.y, (int)rect.width, 2, bevel_lt);
+    DrawRectangle((int)rect.x, (int)rect.y, 2, (int)rect.height, bevel_lt);
+    DrawRectangle((int)rect.x, (int)(rect.y + rect.height - 2), (int)rect.width, 2, bevel_rb);
+    DrawRectangle((int)(rect.x + rect.width - 2), (int)rect.y, 2, (int)rect.height, bevel_rb);
+
+    // icon: left-aligned, vertically centered
+    const float icon_margin = 6.0f;
+    float icon_x = rect.x + icon_margin;
+    float icon_y = rect.y + floorf((rect.height - icon_size) * 0.5f);
+    DrawTexturePro(icon,
+        (Rectangle){0, 0, icon.width, icon.height},
+        (Rectangle){icon_x, icon_y, icon_size, icon_size},
+        (Vector2){0, 0}, 0.0f, WHITE);
+
+    // label: centered in remaining space to the right of the icon
+    Vector2 sz = MeasureTextEx(font, label, font.baseSize, 0);
+    float text_x = rect.x + floorf((rect.width - sz.x) * 0.5f) + (icon_size + icon_margin) * 0.5f;
+    float text_y = rect.y + floorf((rect.height - sz.y) * 0.5f);
+    DrawTextEx(font, label, (Vector2){text_x, text_y}, font.baseSize, 0, WHITE);
+
+    return result;
+}
+
+HoUiInteraction
 ho_combo_box(Vector2 position, bool active, Vector2 size, Font font, const char** options, int option_count, int* selected_index)
 {
     Vector2 original_size = size;

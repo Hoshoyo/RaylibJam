@@ -2,11 +2,7 @@
 #include "renderer/renderer.h"
 #include "renderer/assets.h"
 
-#include "ui/hui.h"
-static ColorPalette ui_palette;
-#include "ui/ho_button.c"
-#include "ui/ho_label.c"
-#include "ui/ho_slider.c"
+#include "ui.h"
 
 static Game game;
 
@@ -15,8 +11,7 @@ void game_init()
     game.camera.zoom = 0.5f;
     game.camera.target = (Vector2){360.0f, 360.0f};
 
-    ui_palette = palette_mountain_ridge;
-
+    ui_init();
     load_assets();
 }
 
@@ -36,27 +31,6 @@ void game_update()
     else if(wheel < 0 && game.camera.zoom >= 0.5f) game.camera.zoom /= 2.0f;
 }
 
-void render_ui()
-{
-    // Button
-    if(ho_button((Vector2){360.0f,360.0f}, (Vector2){100, 40}, GetFontDefault(), "Button") & HOUI_INTERACT_CLICKED)
-    {
-        TraceLog(LOG_INFO, "Clicked!");
-    }
-
-    // Label
-    ho_label((Vector2){360.0f,360.0f + 50.0f}, (Vector2){100, 40}, GetFontDefault(), "Label");
-
-    // Slider
-    static bool slider_active = false;
-    static float value = 0.0f;
-    HoUiInteraction interaction = ho_slider_circle((Vector2){360.0f,360.0f + 2*50.0f}, slider_active, (Vector2){100, 2}, &value, 0, 100.0f);
-    if(interaction & HOUI_INTERACT_CLICKED)
-        slider_active = true;
-    if(interaction & HOUI_INTERACT_RELEASED)
-        slider_active = false;
-}
-
 void game_render()
 {
     BeginDrawing();
@@ -69,25 +43,25 @@ void game_render()
 
         //render_sprite_static_atlas(&grass.atlas, grass_recs[0], (Vector2){80, 210}, 0, WHITE);
 
-        for(int j = 0; j < 5; ++j)
-        {
-            for(int i = 0; i < 6; ++i)
-            {
-                render_sprite_static_atlas(&buildings_shadow.atlas, building_recs[i], (Vector2){720 - i * 120 + j * 200, 0 + i * 110 + j * 200}, 0, WHITE);
-                render_sprite_static_atlas(&buildings_albedo.atlas, building_recs[i], (Vector2){720 - i * 120 + j * 200, 0 + i * 110 + j * 200}, 0, WHITE);
-            }
-        }
+        //for(int j = 0; j < 5; ++j)
+        //{
+        //    for(int i = 0; i < 6; ++i)
+        //    {
+        //        render_sprite_static_atlas(&buildings_shadow.atlas, building_recs[i], (Vector2){720 - i * 120 + j * 200, 0 + i * 110 + j * 200}, 0, WHITE);
+        //        render_sprite_static_atlas(&buildings_albedo.atlas, building_recs[i], (Vector2){720 - i * 120 + j * 200, 0 + i * 110 + j * 200}, 0, WHITE);
+        //    }
+        //}
 
-        render_sprite_static_atlas(&pole_sprite.atlas, pole_sprite.recs[0], (Vector2){20, 90}, 0, WHITE);
+        //render_sprite_static_atlas(&pole_sprite.atlas, pole_sprite.recs[0], (Vector2){20, 90}, 0, WHITE);
 
-        render_sprite_animated(&character[0].shadow, (Vector2){100, 200}, 0, game.tick % sprite_frame_count(&character[0].shadow), WHITE);
-        render_sprite_animated(&character[0].albedo, (Vector2){100, 200}, 1, game.tick % sprite_frame_count(&character[0].albedo), WHITE);
+        //render_sprite_animated(&character[0].shadow, (Vector2){100, 200}, 0, game.tick % sprite_frame_count(&character[0].shadow), WHITE);
+        //render_sprite_animated(&character[0].albedo, (Vector2){100, 200}, 1, game.tick % sprite_frame_count(&character[0].albedo), WHITE);
 
         //DrawCircle(360, 360, 3.0f, RED);
 
         EndMode2D();
 
-        render_ui();
+        ui_render();
     }
 
     EndDrawing();
