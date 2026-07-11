@@ -26,6 +26,7 @@ ho_slider_circle(Vector2 position, bool active, Vector2 size, float* value, floa
             active = true;
             result |= HOUI_INTERACT_CLICKED;
         }
+        result |= HOUI_INTERACT_HOVERED;
     }
 
     if(IsMouseButtonReleased(MOUSE_BUTTON_LEFT))

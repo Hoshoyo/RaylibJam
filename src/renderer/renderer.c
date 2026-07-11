@@ -6,7 +6,7 @@
 static RenderCommand render_queue[RENDER_QUEUE_SIZE];
 static int32_t queue_index;
 
-#define DEBUG_DRAW_SPRITE_BOX 1
+#define DEBUG_DRAW_SPRITE_BOX 0
 
 void render_queue_flush();
 
@@ -40,6 +40,29 @@ void render_sprite_static_atlas(SpriteStaticAtlas* atlas, Rectangle src, Vector2
         .sprite.type = SPRITE_TYPE_STATIC_ATLAS,
         .sprite.static_atlas.src_rec = src,
         .original_index = queue_index,
+        .offset = {0},
+    };
+    render_queue[queue_index].sprite.static_atlas = *atlas;
+    render_queue[queue_index].sprite.static_atlas.src_rec = src;
+    queue_index++;
+
+    if (queue_index >= ARRAY_LENGTH(render_queue))
+    {
+        assert(false && "Too many render commands");
+        render_queue_flush();
+    }
+}
+
+void render_sprite_static_atlas_offset(SpriteStaticAtlas* atlas, Rectangle src, Vector2 offset, Vector2 position, int32_t layer, Color tint)
+{
+    render_queue[queue_index] = (RenderCommand){
+        .position = position,
+        .layer = layer,
+        .tint = tint,
+        .sprite.type = SPRITE_TYPE_STATIC_ATLAS,
+        .sprite.static_atlas.src_rec = src,
+        .original_index = queue_index,
+        .offset = offset
     };
     render_queue[queue_index].sprite.static_atlas = *atlas;
     render_queue[queue_index].sprite.static_atlas.src_rec = src;
@@ -59,7 +82,7 @@ do_render_sprite_static_atlas(RenderCommand* q)
 
     Vector2 scale = q->sprite.static_atlas.scale;
 
-    Vector2 origin = q->sprite.static_atlas.origin;
+    Vector2 origin = Vector2Add(q->sprite.static_atlas.origin, q->offset);
     Vector2 new_origin = Vector2Add(origin, (Vector2) { (src.width * scale.x) / 2.0f, (src.height * scale.y) / 2.0f });
     Vector2 draw_position = Vector2Subtract(q->position, new_origin);
 
@@ -69,8 +92,26 @@ do_render_sprite_static_atlas(RenderCommand* q)
     DrawTexturePro(q->sprite.static_atlas.texture, src, dst_rect, origin, 0, tint);
 
 #if DEBUG_DRAW_SPRITE_BOX
-	DrawRectangleLinesEx(dst_rect, 2, RED);
+	DrawRectangleLines(q->position.x - dst_rect.width / 2.0f, q->position.y - dst_rect.height / 2.0f, dst_rect.width, dst_rect.height, RED);
+    DrawCircle(q->position.x, q->position.y, 3.0f, GOLD);
 #endif
+}
+
+void render_sprite_static_atlas_immediate(SpriteStaticAtlas* atlas, Rectangle src, Vector2 position, int32_t layer, Color tint)
+{
+    RenderCommand command = (RenderCommand){
+        .position = position,
+        .layer = layer,
+        .tint = tint,
+        .sprite.type = SPRITE_TYPE_STATIC_ATLAS,
+        .sprite.static_atlas.src_rec = src,
+        .original_index = queue_index,
+        .offset = {0},
+    };
+    command.sprite.static_atlas = *atlas;
+    command.sprite.static_atlas.src_rec = src;
+
+    do_render_sprite_static_atlas(&command);
 }
 
 static void
