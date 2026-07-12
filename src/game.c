@@ -74,7 +74,7 @@ void render_map()
 {
     #define GRID_SIZE 180
     #if 1
-    SetRandomSeed(456);
+    SetRandomSeed(456);  // deterministic map geometry every frame
     int j = 0;
     for(int y = 8; y > -8; --y)
     {
@@ -112,7 +112,8 @@ void game_render()
         BeginMode2D(game.camera);
     
         render_queue_flush();
-        //render_map();
+        render_map();
+        SetRandomSeed((unsigned int)(GetTime() * 100000.0));  // restore varying seed after map
 
         EndMode2D();
 

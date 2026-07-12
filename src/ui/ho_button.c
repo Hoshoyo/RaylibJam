@@ -120,10 +120,31 @@ ho_button_circle_texture(Vector2 center, float radius, Texture2D texture)
 
 // Rectangular button with an icon left-aligned and label centered in remaining space.
 // font is used for the label. icon_size controls the icon square size.
+// When enabled=false the button is drawn grayed-out and returns no interactions.
 HoUiInteraction
-ho_button_icon_label(Rectangle rect, Texture2D icon, float icon_size, Font font, const char* label, Color base_color)
+ho_button_icon_label(Rectangle rect, Texture2D icon, float icon_size, Font font, const char* label, Color base_color, bool enabled)
 {
     HoUiInteraction result = {0};
+
+    if (!enabled) {
+        const int bw = 2;
+        Color dis_bg = CLITERAL(Color){ 90, 90, 90, 255 };
+        DrawRectangleRec(rect, dis_bg);
+        DrawRectangle((int)rect.x, (int)rect.y, (int)rect.width, bw, CLITERAL(Color){130,130,130,255});
+        DrawRectangle((int)rect.x, (int)rect.y, bw, (int)rect.height, CLITERAL(Color){130,130,130,255});
+        DrawRectangle((int)rect.x, (int)(rect.y+rect.height-bw), (int)rect.width, bw, CLITERAL(Color){60,60,60,255});
+        DrawRectangle((int)(rect.x+rect.width-bw), (int)rect.y, bw, (int)rect.height, CLITERAL(Color){60,60,60,255});
+        const float icon_margin = 6.0f;
+        DrawTexturePro(icon,
+            (Rectangle){0, 0, (float)icon.width, (float)icon.height},
+            (Rectangle){rect.x+icon_margin, rect.y+floorf((rect.height-icon_size)*0.5f), icon_size, icon_size},
+            (Vector2){0,0}, 0.0f, CLITERAL(Color){255,255,255,80});
+        Vector2 sz = MeasureTextEx(font, label, font.baseSize, 0);
+        float text_x = rect.x + floorf((rect.width - sz.x) * 0.5f) + (icon_size + icon_margin) * 0.5f;
+        float text_y = rect.y + floorf((rect.height - sz.y) * 0.5f);
+        DrawTextEx(font, label, (Vector2){text_x, text_y}, font.baseSize, 0, CLITERAL(Color){130,130,130,255});
+        return result;
+    }
 
     bool hov     = CheckCollisionPointRec(GetMousePosition(), rect);
     bool pressed = hov && IsMouseButtonDown(MOUSE_BUTTON_LEFT);

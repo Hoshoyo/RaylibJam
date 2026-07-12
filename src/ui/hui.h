@@ -70,5 +70,5 @@ HoUiInteraction ho_button_circle(Vector2 center, float radius, Font font, const 
 HoUiInteraction ho_button_circle_texture(Vector2 center, float radius, Texture2D texture);
 HoUiInteraction ho_slider_circle(Vector2 position, bool active, Vector2 size, float* value, float min, float max);
 HoUiInteraction ho_label(Vector2 position, Vector2 size, Font font, const char* text);
-HoUiInteraction ho_button_icon_label(Rectangle rect, Texture2D icon, float icon_size, Font font, const char* label, Color base_color);
+HoUiInteraction ho_button_icon_label(Rectangle rect, Texture2D icon, float icon_size, Font font, const char* label, Color base_color, bool enabled);
 HoUiInteraction ho_combo_box(Vector2 position, bool active, Vector2 size, Font font, const char** options, int option_count, int* selected_index);

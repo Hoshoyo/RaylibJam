@@ -3,6 +3,7 @@
 #include "game.h"
 #include "item.h"
 #include "font.h"
+#include "grid_logic.h"
 #include "ui/hui.h"
 static ColorPalette ui_palette;
 #include "ui/ho_button.c"
@@ -14,7 +15,7 @@ static ColorPalette ui_palette;
 #define FACTORY_MENU_X1 (WINDOW_WIDTH - 30.0f)
 #define FACTORY_MENU_Y1 (WINDOW_WIDTH - 30.0f)
 
-// Deferred tooltip — set during the frame, flushed at the very end of ui_render.
+// Deferred item tooltip — set during the frame, flushed at the very end of ui_render.
 typedef struct {
     bool        active;
     const Item* item;
@@ -22,6 +23,15 @@ typedef struct {
     float       y;
 } UiTooltip;
 static UiTooltip ui_tooltip;
+
+// Deferred text tooltip — for plain hover text (e.g. buttons).
+typedef struct {
+    bool        active;
+    const char* text;
+    float       x;
+    float       y;
+} UiTextTooltip;
+static UiTextTooltip ui_text_tooltip;
 
 // ── Slot / drag / drop types ─────────────────────────────────────────────────
 
@@ -78,6 +88,9 @@ void ui_init() {
     tex_energy    = LoadTexture("res/ui/battery.png");
     tex_merge     = LoadTexture("res/ui/merge.png");
 }
+
+// crafted energy — computed each frame when grid is full, -1 otherwise.
+static float s_crafted_energy = -1.0f;
 
 // circle button with icon shifted up + label text at the bottom
 static HoUiInteraction ho_button_circle_icon_label(Vector2 center, float radius, Texture2D icon, const char* label, bool interactive) {
@@ -174,16 +187,17 @@ static void render_factory_menu_base_end(bool* open, float window_height) {
     DrawRectangleLinesEx(rec, 2.0f, CLITERAL(Color){ 55, 55, 55, 255 });
 }
 
-static void draw_sunken_slot(Rectangle rect) {
+static void draw_sunken_slot_ex(Rectangle rect, Color fill) {
     const float bevel = 2.0f;
-    // slot fill
-    DrawRectangleRec(rect, CLITERAL(Color){ 148, 148, 148, 255 });
-    // top & left shadow edges
+    DrawRectangleRec(rect, fill);
     DrawRectangle((int)rect.x, (int)rect.y, (int)rect.width, (int)bevel, CLITERAL(Color){ 85, 85, 85, 255 });
     DrawRectangle((int)rect.x, (int)rect.y, (int)bevel, (int)rect.height, CLITERAL(Color){ 85, 85, 85, 255 });
-    // bottom & right highlight edges
     DrawRectangle((int)rect.x, (int)(rect.y + rect.height - bevel), (int)rect.width, (int)bevel, CLITERAL(Color){ 205, 205, 205, 255 });
     DrawRectangle((int)(rect.x + rect.width - bevel), (int)rect.y, (int)bevel, (int)rect.height, CLITERAL(Color){ 205, 205, 205, 255 });
+}
+
+static void draw_sunken_slot(Rectangle rect) {
+    draw_sunken_slot_ex(rect, CLITERAL(Color){ 148, 148, 148, 255 });
 }
 
 // draws a raised-bevel panel; returns the inner-content y offset from panel_y
@@ -198,12 +212,18 @@ static void draw_raised_panel(float panel_x, float panel_y, float panel_width, f
 
 // Draws one item slot: background, hover highlight (during drag), item icon,
 // drag-start on click, drop-target registration, and tooltip deferral.
-static void draw_item_slot(Rectangle rect, FactorySlotId id, FactoryMenuState* state)
+// locked=true: occupied slots cannot be dragged away; empty slots show a lighter bg.
+static void draw_item_slot(Rectangle rect, FactorySlotId id, FactoryMenuState* state, bool locked)
 {
     bool is_drag_source = ui_drag.active && ui_drag.source_slot == id;
     bool hovered = CheckCollisionPointRec(GetMousePosition(), rect);
 
-    draw_sunken_slot(rect);
+    if (locked && !state->has_item[id])
+        draw_sunken_slot_ex(rect, CLITERAL(Color){ 178, 178, 178, 255 });
+    else if (!state->has_item[id])
+        draw_sunken_slot_ex(rect, CLITERAL(Color){ 178, 178, 178, 255 });
+    else
+        draw_sunken_slot(rect);
 
     // Highlight as valid drop target when dragging over it
     if (ui_drag.active && hovered) {
@@ -221,8 +241,8 @@ static void draw_item_slot(Rectangle rect, FactorySlotId id, FactoryMenuState* s
         item_render(&state->items[id], ix, iy, item_size, false);
     }
 
-    // Begin drag on click
-    if (!ui_drag.active && hovered && state->has_item[id]
+    // Begin drag on click — blocked for locked occupied slots
+    if (!locked && !ui_drag.active && hovered && state->has_item[id]
         && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
     {
         ui_drag.active      = true;
@@ -242,19 +262,78 @@ static void draw_item_slot(Rectangle rect, FactorySlotId id, FactoryMenuState* s
     }
 }
 
+// Splits `text` into word-wrapped lines that fit within `max_width` pixels.
+// Returns the number of lines produced (at most max_lines).
+static int text_wrap_lines(Font font, const char* text, float max_width,
+                            char lines[][256], int max_lines)
+{
+    int line_count = 0;
+    char current[256];
+    int  cur_len = 0;
+    current[0] = '\0';
+
+    const char* p = text;
+    while (*p) {
+        while (*p == ' ') p++;
+        if (!*p) break;
+
+        const char* word_start = p;
+        while (*p && *p != ' ') p++;
+        int word_len = (int)(p - word_start);
+
+        // build candidate: current + optional space + word
+        char test[256];
+        int  test_len = 0;
+        for (int i = 0; i < cur_len; i++)               test[test_len++] = current[i];
+        if (cur_len > 0)                                  test[test_len++] = ' ';
+        for (int i = 0; i < word_len && test_len < 255; i++) test[test_len++] = word_start[i];
+        test[test_len] = '\0';
+
+        float w = MeasureTextEx(font, test, font.baseSize, 0).x;
+        if (w > max_width && cur_len > 0) {
+            // flush current line
+            if (line_count < max_lines) {
+                for (int i = 0; i <= cur_len; i++) lines[line_count][i] = current[i];
+                line_count++;
+            }
+            // start new line with this word
+            cur_len = 0;
+            for (int i = 0; i < word_len && i < 255; i++) current[cur_len++] = word_start[i];
+            current[cur_len] = '\0';
+        } else {
+            for (int i = 0; i <= test_len; i++) current[i] = test[i];
+            cur_len = test_len;
+        }
+    }
+
+    if (cur_len > 0 && line_count < max_lines) {
+        for (int i = 0; i <= cur_len; i++) lines[line_count][i] = current[i];
+        line_count++;
+    }
+    return line_count;
+}
+
 // Renders an item description tooltip at (x, y) — top-left corner.
 // Uses a plain raised panel with dark background.
 static void render_item_description_panel(const Item* item, float x, float y)
 {
     const float padding    = 8.0f;
-    const float panel_w    = 140.0f;
+    const float panel_w    = 220.0f;
+    const float text_w     = panel_w - padding * 2.0f;
     Font* font             = font_get(FONT_SIZE_BODY);
     const float line_h     = font->baseSize + 5.0f;
-    const float panel_h    = padding + line_h * 3.0f + padding;
 
-    const Color bg  = CLITERAL(Color){  30,  30,  30, 230 };
-    const Color fg  = CLITERAL(Color){ 220, 220, 220, 255 };
-    const Color brd = CLITERAL(Color){  80,  80,  80, 255 };
+    const Color bg        = CLITERAL(Color){  30,  30,  30, 230 };
+    const Color fg        = CLITERAL(Color){ 220, 220, 220, 255 };
+    const Color brd       = CLITERAL(Color){  80,  80,  80, 255 };
+    const Color eff_color = CLITERAL(Color){ 220,  60,  60, 255 };
+
+    // Pre-compute wrapped effect lines so we know the panel height upfront.
+    const char* effect_desc = grid_effect_description(item_info(item->id)->effect);
+    char eff_lines[6][256];
+    int  eff_line_count = text_wrap_lines(*font, effect_desc, text_w, eff_lines, 6);
+
+    const float panel_h = padding + line_h * 2.0f + line_h * eff_line_count + padding;
 
     DrawRectangle((int)x, (int)y, (int)panel_w, (int)panel_h, bg);
     DrawRectangleLinesEx((Rectangle){x, y, panel_w, panel_h}, 1.0f, brd);
@@ -274,7 +353,45 @@ static void render_item_description_panel(const Item* item, float x, float y)
     DrawTextEx(*font, TextFormat("QUALITY: %.2f", item->quality), (Vector2){tx, ty}, font->baseSize, 0, fg);
     ty += line_h;
 
-    DrawTextEx(*font, "PLACEMENT:", (Vector2){tx, ty}, font->baseSize, 0, fg);
+    // Effect description — word-wrapped, red
+    for (int i = 0; i < eff_line_count; i++) {
+        DrawTextEx(*font, eff_lines[i], (Vector2){tx, ty}, font->baseSize, 0, eff_color);
+        ty += line_h;
+    }
+}
+
+// Renders a plain text tooltip at (x, y). Word-wraps to fit panel_w.
+static void render_text_tooltip_panel(const char* text, float x, float y)
+{
+    const float padding = 8.0f;
+    const float panel_w = 200.0f;
+    const float text_w  = panel_w - padding * 2.0f;
+    Font* font          = font_get(FONT_SIZE_BODY);
+    const float line_h  = font->baseSize + 5.0f;
+
+    const Color bg  = CLITERAL(Color){  30,  30,  30, 230 };
+    const Color fg  = CLITERAL(Color){ 220, 220, 220, 255 };
+    const Color brd = CLITERAL(Color){  80,  80,  80, 255 };
+
+    char lines[6][256];
+    int  line_count = text_wrap_lines(*font, text, text_w, lines, 6);
+
+    const float panel_h = padding + line_h * line_count + padding;
+
+    // clamp so tooltip doesn't go off screen
+    float rx = x, ry = y;
+    if (rx + panel_w > WINDOW_WIDTH)  rx = WINDOW_WIDTH - panel_w - 4.0f;
+    if (ry + panel_h > WINDOW_HEIGHT) ry = y - panel_h - 8.0f;
+
+    DrawRectangle((int)rx, (int)ry, (int)panel_w, (int)panel_h, bg);
+    DrawRectangleLinesEx((Rectangle){rx, ry, panel_w, panel_h}, 1.0f, brd);
+
+    float tx = rx + padding;
+    float ty = ry + padding;
+    for (int i = 0; i < line_count; i++) {
+        DrawTextEx(*font, lines[i], (Vector2){tx, ty}, font->baseSize, 0, fg);
+        ty += line_h;
+    }
 }
 
 static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
@@ -318,7 +435,7 @@ static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
     // large slot
     float slot_x = content_x + btn_radius * 2.0f + section_gap;
     float slot_y = content_y + floorf((content_height - large_slot_size) * 0.5f);
-    draw_item_slot((Rectangle){slot_x, slot_y, large_slot_size, large_slot_size}, SLOT_POPPER, state);
+    draw_item_slot((Rectangle){slot_x, slot_y, large_slot_size, large_slot_size}, SLOT_POPPER, state, false);
 
     // trash button
     Vector2 trash_center = (Vector2){slot_x + large_slot_size + section_gap + btn_radius, center_y};
@@ -351,14 +468,31 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state) {
     const float action_area_height = action_btn_height + 14.0f;
 
     Font font = *font_get(FONT_SIZE_PANEL);
+    Font body_font = *font_get(FONT_SIZE_BODY);
     const float title_font_size = font.baseSize;
     const float title_area_height = title_font_size + 12.0f;
+    const float energy_row_height = font.baseSize + 10.0f;
 
     const float panel_x = window_x0;
     const float panel_width = window_x1 - window_x0;
-    const float panel_height = panel_padding + title_area_height + 8.0f + grid_height + action_area_height + panel_padding;
+    const float panel_height = panel_padding + title_area_height + 8.0f + grid_height + energy_row_height + action_area_height + panel_padding;
 
-    // light green panel
+    // determine lock state and crafted energy
+    bool grid_locked = false;
+    for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
+        if (state->has_item[i]) { grid_locked = true; break; }
+
+    Grid grid = {0};
+    for (int r = 0; r < GRID_ROWS; ++r)
+        for (int c = 0; c < GRID_COLS; ++c) {
+            FactorySlotId sid = (FactorySlotId)(SLOT_CRAFTER_0 + r * GRID_COLS + c);
+            grid.has_item[r][c] = state->has_item[sid];
+            grid.items[r][c]    = state->items[sid];
+        }
+    bool grid_full = grid_is_full(&grid);
+    s_crafted_energy = grid_full ? grid_compute_quality(&grid) : -1.0f;
+
+    // panel
     draw_raised_panel(panel_x, start_y, panel_width, panel_height, LIGHTGRAY);
 
     // title
@@ -377,8 +511,20 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state) {
                 small_slot_size, small_slot_size
             };
             FactorySlotId slot_id = (FactorySlotId)(SLOT_CRAFTER_0 + row * grid_cols + col);
-            draw_item_slot(slot, slot_id, state);
+            draw_item_slot(slot, slot_id, state, grid_locked);
         }
+    }
+
+    // crafted energy text
+    {
+        const char* energy_str = (s_crafted_energy >= 0.0f)
+            ? TextFormat("Crafted Energy: %.2f", s_crafted_energy)
+            : "-";
+        Vector2 esz = MeasureTextEx(font, energy_str, font.baseSize, 0);
+        float energy_text_x = panel_x + floorf((panel_width - esz.x) * 0.5f);
+        float energy_text_y = grid_y + grid_height + floorf((energy_row_height - font.baseSize) * 0.5f);
+        DrawTextEx(font, energy_str, (Vector2){energy_text_x, energy_text_y},
+            font.baseSize, 0, CLITERAL(Color){ 160, 120, 20, 255 });
     }
 
     // bottom action buttons centered
@@ -388,20 +534,39 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state) {
     const float btns_x = panel_x + floorf((panel_width - btns_total_width) * 0.5f);
     const float btns_y = start_y + panel_height - panel_padding - action_btn_height;
     const float icon_size = 26.0f;
-    const float icon_text_gap = 4.0f;
 
     // Generate Energy (dark yellow)
-    ho_button_icon_label(
-        (Rectangle){btns_x, btns_y, action_btn_width, action_btn_height},
-        tex_energy, icon_size, *font_get(FONT_SIZE_BODY), "GENERATE ENERGY", (Color){160,120,20,255});
+    {
+        HoUiInteraction inter = ho_button_icon_label(
+            (Rectangle){btns_x, btns_y, action_btn_width, action_btn_height},
+            tex_energy, icon_size, body_font, "GENERATE ENERGY", (Color){160,120,20,255}, grid_full);
+        if (inter & HOUI_INTERACT_CLICKED)
+            TraceLog(LOG_INFO, "Grid quality: %.4f", s_crafted_energy);
+        if (inter & HOUI_INTERACT_HOVERED) {
+            Vector2 cur = GetMousePosition();
+            ui_text_tooltip = (UiTextTooltip){ true, "Energize the city", cur.x + 12.0f, cur.y + 4.0f };
+        }
+    }
     // Send to Research (light blue)
-    ho_button_icon_label(
-        (Rectangle){btns_x + action_btn_width + action_btn_gap, btns_y, action_btn_width, action_btn_height},
-        tex_research, icon_size, *font_get(FONT_SIZE_BODY), "SEND TO RESEARCH", (Color){60,130,170,255});
+    {
+        HoUiInteraction inter = ho_button_icon_label(
+            (Rectangle){btns_x + action_btn_width + action_btn_gap, btns_y, action_btn_width, action_btn_height},
+            tex_research, icon_size, body_font, "SEND TO RESEARCH", (Color){60,130,170,255}, grid_full);
+        if (inter & HOUI_INTERACT_HOVERED) {
+            Vector2 cur = GetMousePosition();
+            ui_text_tooltip = (UiTextTooltip){ true, "Energize the research facility to get better quality items", cur.x + 12.0f, cur.y + 4.0f };
+        }
+    }
     // Merge (dark red)
-    ho_button_icon_label(
-        (Rectangle){btns_x + (action_btn_width + action_btn_gap) * 2.0f, btns_y, action_btn_width, action_btn_height},
-        tex_merge, icon_size, *font_get(FONT_SIZE_BODY), "MERGE", (Color){140,30,30,255});
+    {
+        HoUiInteraction inter = ho_button_icon_label(
+            (Rectangle){btns_x + (action_btn_width + action_btn_gap) * 2.0f, btns_y, action_btn_width, action_btn_height},
+            tex_merge, icon_size, body_font, "MERGE", (Color){140,30,30,255}, grid_full);
+        if (inter & HOUI_INTERACT_HOVERED) {
+            Vector2 cur = GetMousePosition();
+            ui_text_tooltip = (UiTextTooltip){ true, "Merge into item of equivalent quality", cur.x + 12.0f, cur.y + 4.0f };
+        }
+    }
 
     return start_y + panel_height;
 }
@@ -429,7 +594,8 @@ static void render_factory_menu(bool* open) {
         const float grid_height = grid_rows * small_slot_size + (grid_rows - 1) * slot_gap;
         const float action_btn_height = 34.0f;
         const float action_area_height = action_btn_height + 14.0f;
-        const float crafter_height = panel_padding + (font.baseSize + 12.0f) + 8.0f + grid_height + action_area_height + panel_padding;
+        const float energy_row_height = font.baseSize + 10.0f;
+        const float crafter_height = panel_padding + (font.baseSize + 12.0f) + 8.0f + grid_height + energy_row_height + action_area_height + panel_padding;
 
         float window_height = topbar_height + popper_height + crafter_height;
 
@@ -512,11 +678,18 @@ bool ui_render()
             ghost_size, false);
     }
 
-    // flush deferred tooltip on top of everything
+    // flush deferred item tooltip on top of everything
     if (ui_tooltip.active)
     {
         render_item_description_panel(ui_tooltip.item, ui_tooltip.x, ui_tooltip.y);
         ui_tooltip.active = false;
+    }
+
+    // flush deferred text tooltip (item tooltip takes priority)
+    if (!ui_tooltip.active && ui_text_tooltip.active)
+    {
+        render_text_tooltip_panel(ui_text_tooltip.text, ui_text_tooltip.x, ui_text_tooltip.y);
+        ui_text_tooltip.active = false;
     }
 
     return capturing;

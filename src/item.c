@@ -6,41 +6,41 @@
 // Order must match the ItemId enum exactly.
 static const ItemInfo item_info_table[ITEM_COUNT] = {
     // ── Rocks ─────────────────────────────────────────────────────────────────
-    [ITEM_BLACKROCK_1] = { "Blackrock", 0.9f, 4.7f },
-    [ITEM_BLACKROCK_2] = { "Blackrock", 1.0f, 4.5f },
-    [ITEM_BLACKROCK_3] = { "Blackrock", 0.8f, 4.8f },
-    [ITEM_BLACKROCK_4] = { "Blackrock", 0.9f, 4.6f },
-    [ITEM_BLACKROCK_5] = { "Blackrock", 1.0f, 4.5f },
-    [ITEM_GRAYSTONE_1] = { "Graystone", 1.5f, 4.1f },
-    [ITEM_GRAYSTONE_2] = { "Graystone", 1.6f, 4.0f },
-    [ITEM_GRAYSTONE_3] = { "Graystone", 1.4f, 4.2f },
-    [ITEM_GRAYSTONE_4] = { "Graystone", 1.7f, 3.9f },
+    [ITEM_BLACKROCK_1] = { "Blackrock",   0.9f, 4.7f, ITEM_EFFECT_NONE },
+    [ITEM_BLACKROCK_2] = { "Blackrock",   1.0f, 4.5f, ITEM_EFFECT_NONE },
+    [ITEM_BLACKROCK_3] = { "Blackrock",   0.8f, 4.8f, ITEM_EFFECT_NONE },
+    [ITEM_BLACKROCK_4] = { "Blackrock",   0.9f, 4.6f, ITEM_EFFECT_NONE },
+    [ITEM_BLACKROCK_5] = { "Blackrock",   1.0f, 4.5f, ITEM_EFFECT_NONE },
+    [ITEM_GRAYSTONE_1] = { "Graystone",   1.5f, 4.1f, ITEM_EFFECT_NONE },
+    [ITEM_GRAYSTONE_2] = { "Graystone",   1.6f, 4.0f, ITEM_EFFECT_NONE },
+    [ITEM_GRAYSTONE_3] = { "Graystone",   1.4f, 4.2f, ITEM_EFFECT_NONE },
+    [ITEM_GRAYSTONE_4] = { "Graystone",   1.7f, 3.9f, ITEM_EFFECT_NONE },
 
     // ── Ores ──────────────────────────────────────────────────────────────────
-    [ITEM_FROSTSILVER] = { "Frostsilver", 3.0f, 2.6f },
-    [ITEM_DUNSTONE]    = { "Dunstone",    2.2f, 3.5f },
-    [ITEM_NIGHTSTEEL]  = { "Nightsteel",  3.1f, 2.4f },
-    [ITEM_UMBERITE]    = { "Umberite",    2.8f, 2.9f },
-    [ITEM_CRIMSONITE]  = { "Crimsonite",  3.2f, 2.3f },
-    [ITEM_GLACIERITE]  = { "Glacierite",  3.0f, 2.5f },
-    [ITEM_VESPERIUM]   = { "Vesperium",   3.5f, 1.9f },
-    [ITEM_MOSSIRON]    = { "Mossiron",    2.7f, 3.1f },
-    [ITEM_VERDANTITE]  = { "Verdantite",  3.4f, 2.1f },
-    [ITEM_VIRIDIUM]    = { "Viridium",    4.0f, 1.4f },
-    [ITEM_STORMSHARD]  = { "Stormshard",  3.3f, 2.2f },
-    [ITEM_AQUARITE]    = { "Aquarite",    4.1f, 1.2f },
-    [ITEM_GLOAMGOLD]   = { "Gloamgold",   3.0f, 2.5f },
-    [ITEM_AURICITE]    = { "Auricite",    3.5f, 1.9f },
-    [ITEM_DAWNSTONE]   = { "Dawnstone",   2.9f, 2.6f },
-    [ITEM_SOLARIUM]    = { "Solarium",    3.8f, 1.6f },
-    [ITEM_SUNBRASS]    = { "Sunbrass",    3.1f, 2.4f },
-    [ITEM_AMBERSTEEL]  = { "Ambersteel",  3.4f, 2.0f },
-    [ITEM_SKYLUME]     = { "Skylume",     4.2f, 1.0f },
-    [ITEM_WILDSPIRE]   = { "Wildspire",   3.7f, 1.7f },
-    [ITEM_VOIDSTONE]   = { "Voidstone",   4.6f, 0.6f },
-    [ITEM_BLOODIRON]   = { "Bloodiron",   3.2f, 2.2f },
-    [ITEM_ABYSSITE]    = { "Abyssite",    4.4f, 0.8f },
-    [ITEM_GRIMSTEEL]   = { "Grimsteel",   3.0f, 2.5f },
+    [ITEM_FROSTSILVER] = { "Frostsilver", 3.0f, 2.6f, ITEM_EFFECT_COLD_CONDUCTION  },
+    [ITEM_DUNSTONE]    = { "Dunstone",    2.2f, 3.5f, ITEM_EFFECT_FOUNDATION        },
+    [ITEM_NIGHTSTEEL]  = { "Nightsteel",  3.1f, 2.4f, ITEM_EFFECT_DARK_EDGE         },
+    [ITEM_UMBERITE]    = { "Umberite",    2.8f, 2.9f, ITEM_EFFECT_HEAVY_SUPPORT     },
+    [ITEM_CRIMSONITE]  = { "Crimsonite",  3.2f, 2.3f, ITEM_EFFECT_CRIMSON_PULSE     },
+    [ITEM_GLACIERITE]  = { "Glacierite",  3.0f, 2.5f, ITEM_EFFECT_FROZEN_COLUMN     },
+    [ITEM_VESPERIUM]   = { "Vesperium",   3.5f, 1.9f, ITEM_EFFECT_TWILIGHT_ECHO     },
+    [ITEM_MOSSIRON]    = { "Mossiron",    2.7f, 3.1f, ITEM_EFFECT_ROOT_NETWORK      },
+    [ITEM_VERDANTITE]  = { "Verdantite",  3.4f, 2.1f, ITEM_EFFECT_CULTIVATION       },
+    [ITEM_VIRIDIUM]    = { "Viridium",    4.0f, 1.4f, ITEM_EFFECT_GREEN_RESONANCE   },
+    [ITEM_STORMSHARD]  = { "Stormshard",  3.3f, 2.2f, ITEM_EFFECT_DISCHARGE         },
+    [ITEM_AQUARITE]    = { "Aquarite",    4.1f, 1.2f, ITEM_EFFECT_QUALITY_FLOW      },
+    [ITEM_GLOAMGOLD]   = { "Gloamgold",   3.0f, 2.5f, ITEM_EFFECT_GILDING           },
+    [ITEM_AURICITE]    = { "Auricite",    3.5f, 1.9f, ITEM_EFFECT_GOLDEN_CHAIN      },
+    [ITEM_DAWNSTONE]   = { "Dawnstone",   2.9f, 2.6f, ITEM_EFFECT_RISING_LIGHT      },
+    [ITEM_SOLARIUM]    = { "Solarium",    3.8f, 1.6f, ITEM_EFFECT_RADIANCE          },
+    [ITEM_SUNBRASS]    = { "Sunbrass",    3.1f, 2.4f, ITEM_EFFECT_HEAT_TRANSFER     },
+    [ITEM_AMBERSTEEL]  = { "Ambersteel",  3.4f, 2.0f, ITEM_EFFECT_TEMPERING         },
+    [ITEM_SKYLUME]     = { "Skylume",     4.2f, 1.0f, ITEM_EFFECT_SKYFALL           },
+    [ITEM_WILDSPIRE]   = { "Wildspire",   3.7f, 1.7f, ITEM_EFFECT_BRANCHING_GROWTH  },
+    [ITEM_VOIDSTONE]   = { "Voidstone",   4.6f, 0.6f, ITEM_EFFECT_SINGULARITY       },
+    [ITEM_BLOODIRON]   = { "Bloodiron",   3.2f, 2.2f, ITEM_EFFECT_EMPOWERMENT       },
+    [ITEM_ABYSSITE]    = { "Abyssite",    4.4f, 0.8f, ITEM_EFFECT_ABYSSAL_FIELD     },
+    [ITEM_GRIMSTEEL]   = { "Grimsteel",   3.0f, 2.5f, ITEM_EFFECT_GRIM_FORMATION    },
 };
 
 const ItemInfo* item_info(ItemId id)
@@ -66,7 +66,8 @@ Item item_generate(void)
     item.name          = info->name;
     item.nativeQuality = info->nativeQuality;
     item.rarity        = info->rarity;
-    item.quality       = GetRandomValue(0, 500) / 100.0f;
+    float rand_factor = 0.9f + GetRandomValue(0, 200) / 1000.0f;
+    item.quality       = info->nativeQuality * rand_factor;
     return item;
 }
 
