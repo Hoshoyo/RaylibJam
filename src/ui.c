@@ -862,12 +862,13 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
             tex_research, icon_size, body_font, "SEND TO RESEARCH", (Color){60,130,170,255}, grid_full && research_unlocked, 0.0f);
         if (inter & HOUI_INTERACT_CLICKED) {
             game->research_points += s_crafted_energy;
+            game->stored_energy   += s_crafted_energy * 0.30f;
             for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
                 state->has_item[i] = false;
         }
         if (inter & HOUI_INTERACT_HOVERED) {
             Vector2 cur = GetMousePosition();
-            ui_text_tooltip = (UiTextTooltip){ true, "Energize the research facility to improve ore discovery and item bonus chances", cur.x, cur.y };
+            ui_text_tooltip = (UiTextTooltip){ true, "Energize the research facility to improve ore discovery and item bonus chances.\nAlso yields 30% of the energy to the city.", cur.x, cur.y };
         } else if (!research_unlocked && CheckCollisionPointRec(GetMousePosition(), research_rect)) {
             Vector2 cur = GetMousePosition();
             ui_text_tooltip = (UiTextTooltip){ true, "Grow your city to 8 buildings to unlock research!", cur.x, cur.y };
