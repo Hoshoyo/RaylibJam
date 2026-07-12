@@ -57,6 +57,25 @@ void ui_set_building_tooltip(const City_Building* cb, float x, float y)
     ui_building_tooltip = (UiBuildingTooltip){ true, cb, x, y };
 }
 
+// ── Day-end notification ─────────────────────────────────────────────────
+typedef struct {
+    int   buildings_added;
+    int   people_added;
+    int   buildings_lost;
+    int   people_lost;
+    int   buildings_without_energy;
+    int   people_without_energy;
+} DaySummary;
+
+#define DAY_NOTIFICATION_DURATION 5.0f
+
+typedef struct {
+    bool       active;
+    float      time_remaining;
+    DaySummary summary;
+} DayNotification;
+static DayNotification day_notification;
+
 // ── Slot / drag / drop types ─────────────────────────────────────────────────
 
 #define FACTORY_SLOT_COUNT 7
@@ -238,7 +257,7 @@ static void render_factory_menu_base_end(bool* open, float window_height) {
     // title
     Font font = *font_get(FONT_SIZE_TITLE);
     const float title_font_size = font.baseSize;
-    const char* title = "FACTORY MENU";
+    const char* title = "POWER PLANT MENU";
     Vector2 title_size = MeasureTextEx(font, title, title_font_size, 0);
     Vector2 title_pos = (Vector2){
         FACTORY_MENU_X0 + btn_margin,
@@ -629,7 +648,7 @@ static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
     draw_raised_panel(panel_x, start_y, panel_width, panel_height, CLITERAL(Color){ 172, 172, 172, 255 });
 
     // title
-    DrawTextEx(font, "ITEM POPPER",
+    DrawTextEx(font, "INPUT DELIVERY",
         (Vector2){panel_x + panel_padding, start_y + panel_padding},
         title_font_size, 0, CLITERAL(Color){ 30, 30, 30, 255 });
 
@@ -742,7 +761,7 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
     draw_raised_panel(panel_x, start_y, panel_width, panel_height, LIGHTGRAY);
 
     // title
-    DrawTextEx(font, "ITEM CRAFTER",
+    DrawTextEx(font, "HEXA ENERGY MERGER",
         (Vector2){panel_x + panel_padding, start_y + panel_padding},
         title_font_size, 0, CLITERAL(Color){ 30, 30, 30, 255 });
 
@@ -811,11 +830,13 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
             ui_text_tooltip = (UiTextTooltip){ true, tip, cur.x, cur.y };
         }
     }
-    // Send to Research (light blue)
+    // Send to Research (light blue) — locked until city reaches 8 buildings
     {
+        bool research_unlocked = game->city_size >= 8;
+        Rectangle research_rect = {btns_x + action_btn_width + action_btn_gap, btns_y, action_btn_width, action_btn_height};
         HoUiInteraction inter = ho_button_icon_label(
-            (Rectangle){btns_x + action_btn_width + action_btn_gap, btns_y, action_btn_width, action_btn_height},
-            tex_research, icon_size, body_font, "SEND TO RESEARCH", (Color){60,130,170,255}, grid_full);
+            research_rect,
+            tex_research, icon_size, body_font, "SEND TO RESEARCH", (Color){60,130,170,255}, grid_full && research_unlocked);
         if (inter & HOUI_INTERACT_CLICKED) {
             game->research_points += s_crafted_energy;
             for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
@@ -824,6 +845,9 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
         if (inter & HOUI_INTERACT_HOVERED) {
             Vector2 cur = GetMousePosition();
             ui_text_tooltip = (UiTextTooltip){ true, "Energize the research facility to improve ore discovery and item bonus chances", cur.x, cur.y };
+        } else if (!research_unlocked && CheckCollisionPointRec(GetMousePosition(), research_rect)) {
+            Vector2 cur = GetMousePosition();
+            ui_text_tooltip = (UiTextTooltip){ true, "Grow your city to 8 buildings to unlock research!", cur.x, cur.y };
         }
     }
 
@@ -905,6 +929,87 @@ static float render_stat_icon(Texture2D icon, Color tint, const char* value_str,
     return ix - spacing;
 }
 
+// Renders the day-end summary notification (bottom-center, fades out after 5 s).
+static void render_day_notification(void)
+{
+    if (!day_notification.active) return;
+
+    day_notification.time_remaining -= GetFrameTime();
+    if (day_notification.time_remaining <= 0.0f) {
+        day_notification.active = false;
+        return;
+    }
+
+    const DaySummary* s = &day_notification.summary;
+
+    char  line_text[3][128];
+    Color line_color[3];
+    int   line_count = 0;
+
+    if (s->buildings_added > 0) {
+        snprintf(line_text[line_count], 128,
+                 "%d new building%s added to the city (%d new habitant%s)",
+                 s->buildings_added, s->buildings_added == 1 ? "" : "s",
+                 s->people_added,    s->people_added    == 1 ? "" : "s");
+        line_color[line_count++] = CLITERAL(Color){  80, 200, 100, 255 };
+    }
+    if (s->buildings_without_energy > 0) {
+        snprintf(line_text[line_count], 128,
+                 "%d people are without power (%d building%s).",
+                 s->people_without_energy,
+                 s->buildings_without_energy, s->buildings_without_energy == 1 ? "" : "s");
+        line_color[line_count++] = CLITERAL(Color){ 200, 160,  30, 255 };
+    }
+    if (s->buildings_lost > 0) {
+        snprintf(line_text[line_count], 128,
+                 "%d building%s destroyed (%d habitant%s left the city)",
+                 s->buildings_lost, s->buildings_lost == 1 ? "" : "s",
+                 s->people_lost,    s->people_lost    == 1 ? "" : "s");
+        line_color[line_count++] = CLITERAL(Color){ 220,  70,  70, 255 };
+    }
+
+    if (line_count == 0) {
+        day_notification.active = false;
+        return;
+    }
+
+    Font* font = font_get(FONT_SIZE_PANEL);
+    const float pad    = 12.0f;
+    const float line_h = font->baseSize + 6.0f;
+
+    float max_w = 0.0f;
+    for (int i = 0; i < line_count; i++) {
+        float w = MeasureTextEx(*font, line_text[i], font->baseSize, 0).x;
+        if (w > max_w) max_w = w;
+    }
+
+    float panel_w = max_w + pad * 2.0f;
+    float panel_h = pad + line_h * line_count - (line_h - font->baseSize) + pad;
+
+    const float btn_radius = 36.0f;
+    const float btn_margin = 14.0f;
+    float panel_x = floorf((WINDOW_WIDTH  - panel_w) * 0.5f);
+    float panel_y = WINDOW_HEIGHT - btn_radius * 2.0f - btn_margin - panel_h - 2.0f;
+
+    float fade        = day_notification.time_remaining < 1.0f ? day_notification.time_remaining : 1.0f;
+    unsigned char bg_a  = (unsigned char)(fade * 210.0f);
+    unsigned char fg_a  = (unsigned char)(fade * 255.0f);
+
+    DrawRectangle((int)panel_x, (int)panel_y, (int)panel_w, (int)panel_h,
+                  CLITERAL(Color){ 30, 30, 30, bg_a });
+    DrawRectangleLinesEx((Rectangle){panel_x, panel_y, panel_w, panel_h}, 1.0f,
+                         CLITERAL(Color){ 80, 80, 80, bg_a });
+
+    float tx = panel_x + pad;
+    float ty = panel_y + pad;
+    for (int i = 0; i < line_count; i++) {
+        Color c = line_color[i];
+        c.a = fg_a;
+        DrawTextEx(*font, line_text[i], (Vector2){tx, ty}, font->baseSize, 0, c);
+        ty += line_h;
+    }
+}
+
 static void render_home_ui(Game* game, bool* factory_menu_open)
 {
     // ── Bottom action buttons ─────────────────────────────────────────────────
@@ -920,7 +1025,7 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
     const Color next_day_color = ui_palette.colors[PALETTE_DARK];
 
     // factory button — opens factory menu
-    if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "FACTORY", !(*factory_menu_open), factory_color, game->animation_timer) & HOUI_INTERACT_CLICKED)
+    if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "POWER PLANT", !(*factory_menu_open), factory_color, game->animation_timer) & HOUI_INTERACT_CLICKED)
     {
         *factory_menu_open = true;
         play_random_pitch(sounds.click, 0.1f);
@@ -971,6 +1076,8 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
         // At most MAXIMUM_BUILDINGS_TO_BE_REMOVED evictions per day.
         bool any_unmet = false;
         int removed = 0;
+        int sum_bld_lost = 0, sum_ppl_lost = 0;
+        int sum_bld_no_energy = 0, sum_ppl_no_energy = 0;
         for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
             int idx = city_evict_order(i);
             int r = idx / CITY_GRID, c = idx % CITY_GRID;
@@ -979,16 +1086,45 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
             if (b->days_without_energy > 0) {
                 any_unmet = true;
                 if (b->days_without_energy >= DAYS_UNTIL_EVICTION && removed < MAXIMUM_BUILDINGS_TO_BE_REMOVED) {
+                    sum_bld_lost++;
+                    sum_ppl_lost += b->people_living;
                     b->filled = false;
                     b->needed_energy = 0.0f;
                     b->days_without_energy = 0;
                     game->city_size--;
                     removed++;
+                } else {
+                    sum_bld_no_energy++;
+                    sum_ppl_no_energy += b->people_living;
                 }
             }
         }
+        // Snapshot filled state before city growth, then grow
+        bool was_filled[CITY_GRID][CITY_GRID];
+        for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+            int r = i / CITY_GRID, c = i % CITY_GRID;
+            was_filled[r][c] = game->city[r][c].filled;
+        }
         play_random_pitch(sounds.click, 0.1f);
         game_next_day(!any_unmet);
+        // Count buildings and people added by city growth
+        int sum_bld_added = 0, sum_ppl_added = 0;
+        for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+            int r = i / CITY_GRID, c = i % CITY_GRID;
+            if (!was_filled[r][c] && game->city[r][c].filled) {
+                sum_bld_added++;
+                sum_ppl_added += game->city[r][c].people_living;
+            }
+        }
+        day_notification = (DayNotification){
+            .active         = true,
+            .time_remaining = DAY_NOTIFICATION_DURATION,
+            .summary = {
+                sum_bld_added,    sum_ppl_added,
+                sum_bld_lost,     sum_ppl_lost,
+                sum_bld_no_energy, sum_ppl_no_energy
+            }
+        };
     }
 
     // ── Top-right status bar ──────────────────────────────────────────────────
@@ -1049,6 +1185,8 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
         str_stored,
         sx, stat_y, stat_icon_size, "City stored energy, ready to use");
     (void)sx;
+
+    render_day_notification();
 }
 
 bool ui_render(const Game* game)
@@ -1091,12 +1229,18 @@ bool ui_render(const Game* game)
                 factory_state.items[target]    = ui_drag.item;
                 factory_state.has_item[target] = true;
             } else if (factory_state.has_item[target]) {
-                // swap
-                Item tmp                              = factory_state.items[target];
-                factory_state.items[target]           = ui_drag.item;
-                factory_state.has_item[target]        = true;
-                factory_state.items[ui_drag.source_slot]    = tmp;
-                factory_state.has_item[ui_drag.source_slot] = true;
+                if (!item_info(factory_state.items[target].id)->movable) {
+                    // target is non-moveable — return dragged item to its source
+                    factory_state.items[ui_drag.source_slot]    = ui_drag.item;
+                    factory_state.has_item[ui_drag.source_slot] = true;
+                } else {
+                    // swap
+                    Item tmp                                          = factory_state.items[target];
+                    factory_state.items[target]                       = ui_drag.item;
+                    factory_state.has_item[target]                    = true;
+                    factory_state.items[ui_drag.source_slot]          = tmp;
+                    factory_state.has_item[ui_drag.source_slot]       = true;
+                }
             } else {
                 // move
                 factory_state.items[target]    = ui_drag.item;

@@ -35,6 +35,7 @@ void SaveGame(const char* data);
 void city_init(int building_count);
 void resize_city(int new_size);
 void game_next_day(bool allow_growth);
+bool is_everyone_happy_now(void);
 
 // Shared fill order: s_fill_order[0] = innermost building slot, [N-1] = outermost.
 extern int s_fill_order[CITY_GRID * CITY_GRID];

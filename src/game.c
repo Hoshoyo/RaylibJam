@@ -40,7 +40,7 @@ void city_init(int building_count)
         game.city[r][c] = (City_Building){ false, 0.0f, GetRandomValue(0, building_count - 1) };
         snprintf(game.city[r][c].address, sizeof(game.city[r][c].address),
                  "%d %s", 101 + c * 12, street_names[r]);
-        game.city[r][c].people_living = GetRandomValue(20, 120);
+        game.city[r][c].people_living = GetRandomValue(200, 800);
         s_fill_order[i] = i;
     }
     qsort(s_fill_order, CITY_GRID * CITY_GRID, sizeof(int), fill_order_cmp);
@@ -63,7 +63,9 @@ void resize_city(int new_size)
             int idx = s_fill_order[i];
             City_Building* b = &game.city[idx / CITY_GRID][idx % CITY_GRID];
             if (!b->filled) {
-                b->filled = true;
+                b->filled              = true;
+                b->needed_energy       = 0.0f;
+                b->days_without_energy = 0;
                 to_add--;
             }
         }
@@ -83,6 +85,16 @@ void resize_city(int new_size)
 
 // Base energy demand increase per building per day (tweak this).
 #define ENERGY_PER_HOUSE_BASE 1.5f
+
+bool is_everyone_happy_now(void)
+{
+    for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+        int r = i / CITY_GRID, c = i % CITY_GRID;
+        if (game.city[r][c].filled && game.city[r][c].days_without_energy != 0)
+            return false;
+    }
+    return true;
+}
 
 void game_next_day(bool allow_growth)
 {
