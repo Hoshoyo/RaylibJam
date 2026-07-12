@@ -18,6 +18,9 @@ static ColorPalette ui_palette;
 #define FACTORY_MENU_X1 (WINDOW_WIDTH - 30.0f)
 #define FACTORY_MENU_Y1 (WINDOW_WIDTH - 30.0f)
 
+// Max buildings evicted per Next Day press (separate from DAYS_UNTIL_EVICTION).
+#define MAXIMUM_BUILDINGS_TO_BE_REMOVED 2
+
 #define ARRAY_LENGTH(A) (sizeof(A) / sizeof(*(A)))
 
 extern SoundFxs sounds;
@@ -40,6 +43,19 @@ typedef struct {
     float       y;
 } UiTextTooltip;
 static UiTextTooltip ui_text_tooltip;
+
+// Deferred building tooltip — set from game.c hover, flushed at end of ui_render.
+typedef struct {
+    bool                 active;
+    const City_Building* building;
+    float                x, y;
+} UiBuildingTooltip;
+static UiBuildingTooltip ui_building_tooltip;
+
+void ui_set_building_tooltip(const City_Building* cb, float x, float y)
+{
+    ui_building_tooltip = (UiBuildingTooltip){ true, cb, x, y };
+}
 
 // ── Slot / drag / drop types ─────────────────────────────────────────────────
 
@@ -491,6 +507,56 @@ static void render_text_tooltip_panel(const char* text, float x, float y)
     }
 }
 
+// Renders the building hover tooltip: address, residents, happiness status.
+static void render_building_tooltip_panel(const City_Building* cb, float bx, float by)
+{
+    Font* font = font_get(FONT_SIZE_BODY);
+    const float pad    = 8.0f;
+    const float line_h = font->baseSize + 5.0f;
+
+    const Color bg     = CLITERAL(Color){  30,  30,  30, 230 };
+    const Color brd    = CLITERAL(Color){  80,  80,  80, 255 };
+    const Color title  = CLITERAL(Color){ 240, 220, 130, 255 };
+    const Color fg     = CLITERAL(Color){ 220, 220, 220, 255 };
+    const Color c_good = CLITERAL(Color){  80, 200, 120, 255 };
+    const Color c_bad  = CLITERAL(Color){ 220,  80,  80, 255 };
+
+    char line_people[32];
+    char line_status[80];
+    Color status_color;
+
+    snprintf(line_people, sizeof(line_people), "%d people live here", cb->people_living);
+    if (cb->days_without_energy == 0) {
+        snprintf(line_status, sizeof(line_status), "People are happy with the service.");
+        status_color = c_good;
+    } else {
+        int days_left = DAYS_UNTIL_EVICTION - cb->days_without_energy;
+        snprintf(line_status, sizeof(line_status), "People are complaining and may leave soon.");
+        status_color = c_bad;
+    }
+
+    float w0 = MeasureTextEx(*font, cb->address,   font->baseSize, 0).x;
+    float w1 = MeasureTextEx(*font, line_people,   font->baseSize, 0).x;
+    float w2 = MeasureTextEx(*font, line_status,   font->baseSize, 0).x;
+    float max_w = w0 > w1 ? w0 : w1;
+    if (w2 > max_w) max_w = w2;
+
+    float panel_w = max_w + pad * 2.0f;
+    float panel_h = pad + line_h * 3.0f - (line_h - font->baseSize) + pad;
+
+    float rx = bx + 12.0f, ry = by + 4.0f;
+    if (rx + panel_w > WINDOW_WIDTH)  rx = WINDOW_WIDTH - panel_w - 4.0f;
+    if (ry + panel_h > WINDOW_HEIGHT) ry = by - panel_h - 8.0f;
+
+    DrawRectangle((int)rx, (int)ry, (int)panel_w, (int)panel_h, bg);
+    DrawRectangleLinesEx((Rectangle){rx, ry, panel_w, panel_h}, 1.0f, brd);
+
+    float tx = rx + pad, ty = ry + pad;
+    DrawTextEx(*font, cb->address,  (Vector2){tx, ty}, font->baseSize, 0, title);       ty += line_h;
+    DrawTextEx(*font, line_people,  (Vector2){tx, ty}, font->baseSize, 0, fg);           ty += line_h;
+    DrawTextEx(*font, line_status,  (Vector2){tx, ty}, font->baseSize, 0, status_color);
+}
+
 static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
     // Auto-populate: if slot is empty, no drag in progress from it, and uses remain, fill it.
     if (!state->has_item[SLOT_POPPER]
@@ -847,9 +913,8 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
                 b->days_without_energy++;
             }
         }
-        // Determine if any building went unmet this turn, and remove those stuck for 2+ days.
+        // Determine if any building went unmet this turn, and remove those stuck for DAYS_UNTIL_EVICTION+ days.
         // At most MAXIMUM_BUILDINGS_TO_BE_REMOVED evictions per day.
-        #define MAXIMUM_BUILDINGS_TO_BE_REMOVED 2
         bool any_unmet = false;
         int removed = 0;
         for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
@@ -859,7 +924,7 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
             if (!b->filled) continue;
             if (b->days_without_energy > 0) {
                 any_unmet = true;
-                if (b->days_without_energy >= 2 && removed < MAXIMUM_BUILDINGS_TO_BE_REMOVED) {
+                if (b->days_without_energy >= DAYS_UNTIL_EVICTION && removed < MAXIMUM_BUILDINGS_TO_BE_REMOVED) {
                     b->filled = false;
                     b->needed_energy = 0.0f;
                     b->days_without_energy = 0;
@@ -942,8 +1007,8 @@ bool ui_render(const Game* game)
     }
 
     // reset frame-transient drop target and text tooltip
-    ui_drop_target   = (UiDropTarget){0};
-    ui_text_tooltip  = (UiTextTooltip){0};
+    ui_drop_target       = (UiDropTarget){0};
+    ui_text_tooltip      = (UiTextTooltip){0};
 
     // ── Home UI (always visible) ─────────────────────────────────────────────
     render_home_ui((Game*)game, &factory_menu_open);
@@ -1019,6 +1084,13 @@ bool ui_render(const Game* game)
     {
         render_text_tooltip_panel(ui_text_tooltip.text, ui_text_tooltip.x + 12.0f, ui_text_tooltip.y + 4.0f);
         ui_text_tooltip.active = false;
+    }
+
+    // flush deferred building tooltip (lowest priority)
+    if (!ui_tooltip.active && !ui_text_tooltip.active && ui_building_tooltip.active)
+    {
+        render_building_tooltip_panel(ui_building_tooltip.building, ui_building_tooltip.x, ui_building_tooltip.y);
+        ui_building_tooltip.active = false;
     }
 
     return capturing;

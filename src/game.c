@@ -29,9 +29,18 @@ static int fill_order_cmp(const void* a, const void* b)
 
 void city_init(int building_count)
 {
+    static const char* street_names[CITY_GRID] = {
+        "Sunflower Avenue", "Maple Street",    "Willow Street",   "Lavender Street",
+        "Magnolia Avenue",  "Cedar Street",    "Poppy Street",    "Birch Street",
+        "Jacaranda Avenue", "Rose Street",     "Elm Street",      "Daisy Street",
+        "Acacia Avenue",    "Pine Street",     "Orchid Street",   "Clover Street",
+    };
     for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
         int r = i / CITY_GRID, c = i % CITY_GRID;
         game.city[r][c] = (City_Building){ false, 0.0f, GetRandomValue(0, building_count - 1) };
+        snprintf(game.city[r][c].address, sizeof(game.city[r][c].address),
+                 "%d %s", 101 + c * 12, street_names[r]);
+        game.city[r][c].people_living = GetRandomValue(20, 120);
         s_fill_order[i] = i;
     }
     qsort(s_fill_order, CITY_GRID * CITY_GRID, sizeof(int), fill_order_cmp);
@@ -220,8 +229,10 @@ void render_map()
             Color hover_tint = WHITE;
             if(CheckCollisionPointRec(mouse_world, bbox))
             {
-                // Do here logic if the building is hovered
-                hover_tint = ColorBrightness(GREEN, 0.5f);
+                if (cb->filled) {
+                    hover_tint = ColorBrightness(GREEN, 0.5f);
+                    ui_set_building_tooltip(cb, GetMousePosition().x, GetMousePosition().y);
+                }
             }
 
             render_sprite_static_atlas(&road.atlas, (Rectangle){0, 0, road.atlas.texture.width, road.atlas.texture.height - 100}, position, 0, WHITE);

@@ -6,12 +6,15 @@
 #define WINDOW_HEIGHT 720
 
 #define CITY_GRID 16
+#define DAYS_UNTIL_EVICTION 2  // days without energy before a building is removed
 
 typedef struct {
     bool  filled;
     float needed_energy;
     int   render_ref;
     int   days_without_energy;
+    int   people_living;        // set once at city_init, randomised
+    char  address[32];          // e.g. "125 Cedar Street" — set once at city_init
 } City_Building;
 
 typedef struct {

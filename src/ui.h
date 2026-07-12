@@ -6,3 +6,5 @@ void ui_init();
 // Returns true when the UI is capturing mouse input (menu open or item being dragged).
 // Store the result and pass it to game_update to suppress camera movement.
 bool ui_render(const Game* game);
+// Called from game.c when the cursor hovers a filled building on the map.
+void ui_set_building_tooltip(const City_Building* cb, float x, float y);
