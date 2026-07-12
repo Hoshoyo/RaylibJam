@@ -381,29 +381,48 @@ static int text_wrap_lines(Font font, const char* text, float max_width,
 // Uses a plain raised panel with dark background.
 static void render_item_description_panel(const Item* item, float x, float y)
 {
-    const float padding    = 8.0f;
-    const float panel_w    = 220.0f;
-    const float text_w     = panel_w - padding * 2.0f;
-    Font* font             = font_get(FONT_SIZE_BODY);
-    const float line_h     = font->baseSize + 5.0f;
+    const float padding     = 8.0f;
+    const float max_text_w  = 330.0f;   // hard cap so very long effect strings don't run off-screen
+    Font* font              = font_get(FONT_SIZE_BODY);
+    const float line_h      = font->baseSize + 5.0f;
 
     const Color bg        = CLITERAL(Color){  30,  30,  30, 230 };
     const Color fg        = CLITERAL(Color){ 220, 220, 220, 255 };
     const Color brd       = CLITERAL(Color){  80,  80,  80, 255 };
     const Color eff_color = CLITERAL(Color){ 220,  60,  60, 255 };
+    const Color eff_blue  = CLITERAL(Color){ 120, 190, 220, 255 };
 
-    // Pre-compute wrapped effect lines so we know the panel height upfront.
-    const char* effect_desc = grid_effect_description(item_info(item->id)->effect);
+    // Measure natural (unwrapped) width of every text piece.
+    char energy_base[32];
+    snprintf(energy_base, sizeof(energy_base), "ENERGY: %.2f", item->energy);
+
+    const char* effect_desc   = grid_effect_description(item_info(item->id)->effect);
+    bool        is_immovable  = !item_info(item->id)->movable;
+    const char* immovable_str = "This item cannot be moved once placed in the crafting grid.";
+
+    float w = MeasureTextEx(*font, TextToUpper(item->name), font->baseSize, 0).x;
+    float t = MeasureTextEx(*font, energy_base,              font->baseSize, 0).x;
+    if (t > w) w = t;
+    t = MeasureTextEx(*font, effect_desc, font->baseSize, 0).x;
+    if (t > w) w = t;
+    if (is_immovable) {
+        t = MeasureTextEx(*font, immovable_str, font->baseSize, 0).x;
+        if (t > w) w = t;
+    }
+
+    // Clamp to cap; text_wrap_lines will only wrap if a line exceeds text_w.
+    float text_w  = w < max_text_w ? w : max_text_w;
+    float panel_w = text_w + padding * 2.0f;
+
+    // Pre-compute wrapped lines so we know panel height upfront.
     char eff_lines[6][256];
     int  eff_line_count = text_wrap_lines(*font, effect_desc, text_w, eff_lines, 6);
 
-    bool is_immovable = !item_info(item->id)->movable;
-    const char* immovable_str = "This item cannot be moved once placed in the crafting grid.";
     char immov_lines[4][256];
     int  immov_line_count = is_immovable ? text_wrap_lines(*font, immovable_str, text_w, immov_lines, 4) : 0;
 
-    const float panel_h = padding + line_h * 2.0f + line_h * eff_line_count
-                          + (immov_line_count > 0 ? line_h * immov_line_count : 0.0f) + padding;
+    int total_lines = 2 + eff_line_count + immov_line_count;
+    const float panel_h = padding + line_h * total_lines - (line_h - font->baseSize) + padding;
 
     DrawRectangle((int)x, (int)y, (int)panel_w, (int)panel_h, bg);
     DrawRectangleLinesEx((Rectangle){x, y, panel_w, panel_h}, 1.0f, brd);
@@ -411,29 +430,28 @@ static void render_item_description_panel(const Item* item, float x, float y)
     float tx = x + padding;
     float ty = y + padding;
 
-    // Name — colored by energy tier
+    // Name — colored by item category
     Color name_color;
-    if      (item->energy < 1.5f) name_color = CLITERAL(Color){ 160, 160, 160, 255 };
-    else if (item->energy < 3.0f) name_color = CLITERAL(Color){  80, 200,  80, 255 };
-    else if (item->energy < 4.0f) name_color = CLITERAL(Color){  30, 180,  30, 255 };
-    else                           name_color = CLITERAL(Color){ 220,  60,  60, 255 };
+    if      (item->id >= ITEM_MERGED_BEGIN && item->id < ITEM_MERGED_END)
+        name_color = CLITERAL(Color){ 220,  60,  60, 255 }; // merged  → red
+    else if (item->id >= ITEM_ORE_BEGIN    && item->id < ITEM_ORE_END)
+        name_color = CLITERAL(Color){ 120, 210, 120, 255 }; // ore     → light green
+    else
+        name_color = CLITERAL(Color){ 160, 160, 160, 255 }; // rock    → gray
     DrawTextEx(*font, TextToUpper(item->name), (Vector2){tx, ty}, font->baseSize, 0, name_color);
     ty += line_h;
 
-    // Energy line: "ENERGY: X.XX"
-    char energy_base[32];
-    snprintf(energy_base, sizeof(energy_base), "ENERGY: %.2f", item->energy);
+    // Energy line
     DrawTextEx(*font, energy_base, (Vector2){tx, ty}, font->baseSize, 0, fg);
     ty += line_h;
 
-    // Effect description — word-wrapped, light blue
-    const Color eff_blue = CLITERAL(Color){ 120, 190, 220, 255 };
+    // Effect description — light blue
     for (int i = 0; i < eff_line_count; i++) {
         DrawTextEx(*font, eff_lines[i], (Vector2){tx, ty}, font->baseSize, 0, eff_blue);
         ty += line_h;
     }
 
-    // Immovable warning — word-wrapped, red
+    // Immovable warning — red
     for (int i = 0; i < immov_line_count; i++) {
         DrawTextEx(*font, immov_lines[i], (Vector2){tx, ty}, font->baseSize, 0, eff_color);
         ty += line_h;
@@ -443,20 +461,24 @@ static void render_item_description_panel(const Item* item, float x, float y)
 // Renders a plain text tooltip at (x, y). Word-wraps to fit panel_w.
 static void render_text_tooltip_panel(const char* text, float x, float y)
 {
-    const float padding = 8.0f;
-    const float panel_w = 200.0f;
-    const float text_w  = panel_w - padding * 2.0f;
-    Font* font          = font_get(FONT_SIZE_BODY);
-    const float line_h  = font->baseSize + 5.0f;
+    const float padding    = 8.0f;
+    const float max_text_w = 300.0f;
+    Font* font             = font_get(FONT_SIZE_BODY);
+    const float line_h     = font->baseSize + 5.0f;
 
     const Color bg  = CLITERAL(Color){  30,  30,  30, 230 };
     const Color fg  = CLITERAL(Color){ 220, 220, 220, 255 };
     const Color brd = CLITERAL(Color){  80,  80,  80, 255 };
 
+    // Size panel to fit text naturally, capped at max_text_w.
+    float natural_w = MeasureTextEx(*font, text, font->baseSize, 0).x;
+    float text_w    = natural_w < max_text_w ? natural_w : max_text_w;
+    float panel_w   = text_w + padding * 2.0f;
+
     char lines[6][256];
     int  line_count = text_wrap_lines(*font, text, text_w, lines, 6);
 
-    const float panel_h = padding + line_h * line_count + padding;
+    const float panel_h = padding + line_h * line_count - (line_h - font->baseSize) + padding;
 
     // clamp so tooltip doesn't go off screen
     float rx = x, ry = y;
@@ -964,7 +986,11 @@ bool ui_render(const Game* game)
             successfully_placed = true;
         } else if (ui_drop_target.any_hovered) {
             FactorySlotId target = ui_drop_target.hovered_slot;
-            if (factory_state.has_item[target]) {
+            if (target == ui_drag.source_slot) {
+                // dropped back onto its own slot — just return it, no generation
+                factory_state.items[target]    = ui_drag.item;
+                factory_state.has_item[target] = true;
+            } else if (factory_state.has_item[target]) {
                 // swap
                 Item tmp                              = factory_state.items[target];
                 factory_state.items[target]           = ui_drag.item;
