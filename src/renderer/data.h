@@ -109,6 +109,23 @@ Rectangle merge_cubes_recs[6] = {
 
 static AssetAtlas items_sprite = { {"res/rocks/rocks1.png", false, {0}, {0}, {1.0f, 1.0f}, 1.0f, 1, {0}}, sizeof(merged_icons_recs) / sizeof(*merged_icons_recs), merged_icons_recs};
 
+Rectangle trees_recs[5] = {
+  {12.000000, 165.000000, 312.000000, 287.000000},
+  {19.000000, 494.000000, 372.000000, 322.000000},
+  {153.000000, 819.000000, 203.000000, 188.000000},
+  {385.000000, 472.000000, 470.000000, 380.000000},
+  {364.000000, 90.000000, 393.000000, 342.000000},
+};
+
+static AssetAtlas trees_sprite = { {"res/grass/trees1.png", false, {0}, {0}, {1.0f, 1.0f}, 1.0f, 1, {0}}, sizeof(trees_recs) / sizeof(*trees_recs), trees_recs};
+
+Rectangle power_icons_recs[2] = {
+  {10.000000, 20.000000, 273.000000, 259.000000},
+  {303.000000, 48.000000, 195.000000, 195.000000},
+};
+
+static AssetAtlas power_icons = { {"res/icons/power1.png", false, {0}, {0}, {1.0f, 1.0f}, 1.0f, 1, {0}}, sizeof(power_icons_recs) / sizeof(*power_icons_recs), power_icons_recs};
+
 /*
   const char* path;
   bool        loaded;

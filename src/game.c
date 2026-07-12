@@ -75,22 +75,6 @@ void game_update()
     game.camera.target.y = (float)round(game.camera.target.y);
 }
 
-void debug_slider(int id, float* value, float min, float max)
-{
-    if(id < 0 || id > 256) return;
-
-    static bool debug_sliders[256];
-    HoUiInteraction interaction = ho_slider_circle((Vector2){10.0f, 10.0f + id * 50.0f}, debug_sliders[id], (Vector2){180, 2}, value, min, max);
-    if(interaction & HOUI_INTERACT_CLICKED)
-        debug_sliders[id] = true;
-    if(interaction & HOUI_INTERACT_RELEASED)
-        debug_sliders[id] = false;
-    *value = roundf(*value);
-    DrawText(TextFormat("%.2f", *value), 195, id * 50, 20, WHITE);
-
-    ui_hovered_or_active = (interaction & HOUI_INTERACT_HOVERED) != 0 || debug_sliders[id];
-}
-
 void render_ui()
 {
     DrawRectangle(360, 360, 200, 200, BROWN);
@@ -135,13 +119,26 @@ void render_map()
             int random_building = GetRandomValue(0, pole_sprite.rect_count - 1);
             int random_pole = GetRandomValue(0, pole_sprite.rect_count - 1);
 
-            //if(GetRandomValue(0, 100) < 20)
+            //if(building_here)
             {
                 render_sprite_static_atlas_offset(&buildings_shadow.atlas, building_recs[random_building], building_offsets[random_building], position, 0, WHITE);
                 render_sprite_static_atlas_offset(&buildings_albedo.atlas, building_recs[random_building], building_offsets[random_building], position, 0, WHITE);
 
                 Vector2 pole_position = Vector2Add(position, (Vector2){30, 50});
                 render_sprite_static_atlas_offset(&pole_sprite.atlas, pole_sprite.recs[random_pole], pole_offsets[random_pole], pole_position, 0, WHITE);
+            }
+            if(GetRandomValue(0, 100) < 70)
+            {
+                int random_tree = GetRandomValue(0, trees_sprite.rect_count - 1);
+                int random_spread = GetRandomValue(-80, 80);
+                Vector2 tree_position = Vector2Add(position, (Vector2){random_spread, 20});
+                render_sprite_static_atlas(&trees_sprite.atlas, trees_sprite.recs[random_tree], tree_position, 0, WHITE);
+            }
+
+            // Power out icon
+            if(GetRandomValue(0, 100) < 10)
+            {
+                render_sprite_static_atlas(&power_icons.atlas, power_icons_recs[0], Vector2Add(position, (Vector2){0, -100}), 1, WHITE);
             }
         }
     }
@@ -218,8 +215,6 @@ void game_render()
         EndMode2D();
 
         render_items();
-
-        DrawText(TextFormat("%f", game.camera.zoom), 0, 0, 20, WHITE);
     }
 
     EndDrawing();
