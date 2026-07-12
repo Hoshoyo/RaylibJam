@@ -26,7 +26,6 @@ typedef struct {
     int   city_size;
     int   day;
     City_Building city[CITY_GRID][CITY_GRID];
-    float animation_timer;
 } Game;
 
 void LoadSave(void);
