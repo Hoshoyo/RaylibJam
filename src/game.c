@@ -336,14 +336,14 @@ bool objective_reach100(Game* game, Objective objectives[])
 }
 bool objective_happy5(Game* game, Objective objectives[])
 {
-    bool result = false;
+    bool result = (game->day == 5) && is_everyone_happy_now();
     if(result) objectives[4].active = true;
     return result;
 }
 
 bool objective_happy50(Game* game, Objective objectives[])
 {
-    return false;
+    return (game->day == 50) && is_everyone_happy_now();
 }
 
 bool objective_100store(Game* game, Objective objectives[])
@@ -371,6 +371,14 @@ void objectives_render(Game* game)
         {"Reach 100 energy stored", objective_100store, true},
         {"Reach 1000 energy stored", objective_1000store}
     };
+
+    float height = 10.0f;
+    for(int i = 0; i < ARRAY_LENGTH(objectives); ++i)
+    {
+        if(objectives[i].reached || objectives[i].active) height += font->baseSize;
+    }
+
+    DrawRectangleRounded((Rectangle){5, 5, 230, height}, 0.1f, 8, CLITERAL(Color){ 30, 30, 30, 160 });
 
     float heightoffset = 0;
     for(int i = 0; i < ARRAY_LENGTH(objectives); ++i)
