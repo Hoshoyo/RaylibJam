@@ -212,6 +212,7 @@ void render_map()
     #define GRID_SIZE 180
 
     SetRandomSeed(456);
+
     for(int y = 8; y > -8; --y)
     {
         for(int x = -8; x < 8; ++x)
@@ -274,6 +275,14 @@ void render_map()
         }
     }
 
+    for(int y = 2; y > -2; --y)
+    {
+        for(int x = -2; x < 2; ++x)
+        {
+            render_sprite_static_atlas(&road.atlas, (Rectangle){0, 0, road.atlas.texture.width, road.atlas.texture.height}, (Vector2){1600 + x * GRID_SIZE, -2200 + y * GRID_SIZE}, 0, WHITE);
+        }
+    }
+
     render_sprite_static_atlas(&powerplant.atlas, (Rectangle){0, 0, powerplant.atlas.texture.width, powerplant.atlas.texture.height }, (Vector2){1500, -2200}, 0, WHITE);
 
     // Ambient sound
@@ -287,6 +296,89 @@ void render_map()
     if(!IsSoundPlaying(sounds.birds))
     {
         PlaySound(sounds.birds);
+    }
+}
+
+typedef struct Objective {
+    const char* description;
+    bool(*check_complete)(Game*, struct Objective*);
+    bool active;
+    bool reached;
+} Objective;
+
+bool objective_reach10(Game* game, Objective objectives[])
+{
+    bool result = (game->city_size >= 10);
+    if(result) objectives[1].active = true;
+    return result;
+}
+bool objective_reach50(Game* game, Objective objectives[])
+{
+    bool result = (game->city_size >= 50);
+    if(result) objectives[2].active = true;
+    return result;
+}
+bool objective_reach100(Game* game, Objective objectives[])
+{
+    return (game->city_size >= 100);
+}
+bool objective_happy5(Game* game, Objective objectives[])
+{
+    bool result = false;
+    if(result) objectives[4].active = true;
+    return result;
+}
+
+bool objective_happy50(Game* game, Objective objectives[])
+{
+    return false;
+}
+
+bool objective_100store(Game* game, Objective objectives[])
+{
+    bool result = game->stored_energy >= 100;
+    if(result) objectives[6].active = true;
+    return result;
+}
+
+bool objective_1000store(Game* game, Objective objectives[])
+{
+    return game->stored_energy >= 1000;
+}
+
+void objectives_render(Game* game)
+{
+    Font* font = font_get(FONT_SIZE_TITLE);
+
+    static Objective objectives[] = {
+        {"Reach 10 city size", objective_reach10, true},
+        {"Reach 50 city size", objective_reach50},
+        {"Reach 100 city size", objective_reach100},
+        {"Get to day 5 with everyone happy", objective_happy5, true},
+        {"Get to day 50 with everyone happy", objective_happy50},
+        {"Reach 100 energy stored", objective_100store, true},
+        {"Reach 1000 energy stored", objective_1000store}
+    };
+
+    float heightoffset = 0;
+    for(int i = 0; i < ARRAY_LENGTH(objectives); ++i)
+    {
+        if(objectives[i].reached)
+        {
+            DrawTextEx(*font, objectives[i].description, (Vector2){10,10 + heightoffset * font->baseSize}, font->baseSize, 0, GREEN);
+            heightoffset++;
+        }
+        else if(objectives[i].active)
+        {
+            DrawTextEx(*font, objectives[i].description, (Vector2){10,10 + heightoffset * font->baseSize}, font->baseSize, 0, WHITE);
+            heightoffset++;
+
+            // Check objective
+            if(objectives[i].check_complete && objectives[i].check_complete(game, objectives))
+            {
+                objectives[i].reached = true;
+            }
+        }
     }
 }
 
@@ -306,6 +398,7 @@ void game_render()
         EndMode2D();
 
         ui_hovered_or_active = ui_render(&game);
+        objectives_render(&game);
     }
 
     EndDrawing();
