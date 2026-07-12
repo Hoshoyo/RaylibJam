@@ -111,7 +111,7 @@ const ItemInfo* item_info(ItemId id);
 
 // Generate a pseudo-random item: 65% rock, 35% ore.
 // Relies on Raylib's GetRandomValue — call after InitWindow.
-Item item_generate(void);
+Item item_generate(float ore_chance);
 
 // Create a merged artifact with the given energy, picking a random
 // sprite from the merge_cubes_recs atlas entries.

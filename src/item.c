@@ -42,13 +42,13 @@ static const ItemInfo item_info_table[ITEM_COUNT] = {
     [ITEM_ABYSSITE]    = { "Abyssite",    4.4f, 0.8f, ITEM_EFFECT_ABYSSAL_FIELD,     false },
     [ITEM_GRIMSTEEL]   = { "Grimsteel",   3.0f, 2.5f, ITEM_EFFECT_GRIM_FORMATION,    false },
 
-    // ── Merged artifacts (movable=false) ──────────────────────────────────────
-    [ITEM_MERGED_1]    = { "Merged Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE, false },
-    [ITEM_MERGED_2]    = { "Merged Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE, false },
-    [ITEM_MERGED_3]    = { "Merged Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE, false },
-    [ITEM_MERGED_4]    = { "Merged Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE, false },
-    [ITEM_MERGED_5]    = { "Merged Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE, false },
-    [ITEM_MERGED_6]    = { "Merged Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE, false },
+    // ── Merged artifacts (movable=true) ───────────────────────────────────────
+    [ITEM_MERGED_1]    = { "Bonus Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE, true },
+    [ITEM_MERGED_2]    = { "Bonus Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE, true },
+    [ITEM_MERGED_3]    = { "Bonus Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE, true },
+    [ITEM_MERGED_4]    = { "Bonus Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE, true },
+    [ITEM_MERGED_5]    = { "Bonus Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE, true },
+    [ITEM_MERGED_6]    = { "Bonus Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE, true },
 };
 
 const ItemInfo* item_info(ItemId id)
@@ -56,13 +56,12 @@ const ItemInfo* item_info(ItemId id)
     return &item_info_table[id];
 }
 
-Item item_generate(void)
+Item item_generate(float ore_chance)
 {
     ItemId id;
 
-    // 65% rock, 35% ore
-    bool is_rock = (GetRandomValue(1, 100) <= 65);
-    if (is_rock) {
+    bool is_ore = (GetRandomValue(1, 100) <= (int)(ore_chance * 100.0f + 0.5f));
+    if (!is_ore) {
         id = (ItemId)GetRandomValue(ITEM_ROCK_BEGIN, ITEM_ROCK_END - 1);
     } else {
         id = (ItemId)GetRandomValue(ITEM_ORE_BEGIN, ITEM_ORE_END - 1);

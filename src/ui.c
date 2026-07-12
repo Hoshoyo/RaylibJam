@@ -133,11 +133,19 @@ static float s_crafted_energy = -1.0f;
 // current game pointer — set each frame in ui_render for use by tooltip rendering.
 static const Game* s_current_game = NULL;
 
-// Research merge multiplier: sqrt-based, fast early gains with diminishing returns.
-static float research_multiplier(void)
+// Research: ore discovery chance (base 35%, approaches 100% asymptotically).
+static double get_ore_chance(double research_points)
 {
-    if (!s_current_game) return 1.0f;
-    return 1.0f + sqrtf(s_current_game->research_points) / 3.0f;
+    if (research_points <= 0.0) return 0.35;
+    return 0.35 + 0.65 / (1.0 + pow(161.0 / research_points, 0.716));
+}
+
+// Research: chance to generate a bonus merged item on Merge click.
+static double get_bonus_item_chance(double research_points)
+{
+    //return 1.0;
+    if (research_points <= 0.0) return 0.0;
+    return 0.50 / (1.0 + pow(172.0 / research_points, 0.794));
 }
 
 // circle button with icon shifted up + label text at the bottom
@@ -349,12 +357,26 @@ static int text_wrap_lines(Font font, const char* text, float max_width,
 
     const char* p = text;
     while (*p) {
+        // Explicit newline → flush current line immediately
+        if (*p == '\n') {
+            if (line_count < max_lines) {
+                for (int i = 0; i <= cur_len; i++) lines[line_count][i] = current[i];
+                line_count++;
+            }
+            cur_len = 0;
+            current[0] = '\0';
+            p++;
+            continue;
+        }
+
         while (*p == ' ') p++;
         if (!*p) break;
+        if (*p == '\n') continue; // newline after spaces: handled next iteration
 
         const char* word_start = p;
-        while (*p && *p != ' ') p++;
+        while (*p && *p != ' ' && *p != '\n') p++;
         int word_len = (int)(p - word_start);
+        if (word_len == 0) continue;
 
         // build candidate: current + optional space + word
         char test[256];
@@ -470,6 +492,7 @@ static void render_item_description_panel(const Item* item, float x, float y)
 }
 
 // Renders a plain text tooltip at (x, y). Word-wraps to fit panel_w.
+// Supports \n for explicit line breaks.
 static void render_text_tooltip_panel(const char* text, float x, float y)
 {
     const float padding    = 8.0f;
@@ -481,10 +504,25 @@ static void render_text_tooltip_panel(const char* text, float x, float y)
     const Color fg  = CLITERAL(Color){ 220, 220, 220, 255 };
     const Color brd = CLITERAL(Color){  80,  80,  80, 255 };
 
-    // Size panel to fit text naturally, capped at max_text_w.
-    float natural_w = MeasureTextEx(*font, text, font->baseSize, 0).x;
-    float text_w    = natural_w < max_text_w ? natural_w : max_text_w;
-    float panel_w   = text_w + padding * 2.0f;
+    // Measure max natural width across \n-separated segments.
+    float natural_w = 0.0f;
+    {
+        const char* seg = text;
+        while (*seg) {
+            const char* nl = seg;
+            while (*nl && *nl != '\n') nl++;
+            char buf[256];
+            int len = (int)(nl - seg);
+            if (len > 255) len = 255;
+            for (int i = 0; i < len; i++) buf[i] = seg[i];
+            buf[len] = '\0';
+            float w = MeasureTextEx(*font, buf, font->baseSize, 0).x;
+            if (w > natural_w) natural_w = w;
+            seg = *nl ? nl + 1 : nl;
+        }
+    }
+    float text_w  = natural_w < max_text_w ? natural_w : max_text_w;
+    float panel_w = text_w + padding * 2.0f;
 
     char lines[6][256];
     int  line_count = text_wrap_lines(*font, text, text_w, lines, 6);
@@ -531,7 +569,9 @@ static void render_building_tooltip_panel(const City_Building* cb, float bx, flo
         status_color = c_good;
     } else {
         int days_left = DAYS_UNTIL_EVICTION - cb->days_without_energy;
-        snprintf(line_status, sizeof(line_status), "People are complaining and may leave soon.");
+        snprintf(line_status, sizeof(line_status),
+                 "People are complaining and may leave in %d day%s.",
+                 days_left, days_left == 1 ? "" : "s");
         status_color = c_bad;
     }
 
@@ -563,7 +603,8 @@ static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
         && !(ui_drag.active && ui_drag.source_slot == SLOT_POPPER)
         && s_items_generated_today < ITEM_GENERATES_PER_DAY)
     {
-        state->items[SLOT_POPPER]    = item_generate();
+        float ore_ch = (float)get_ore_chance(s_current_game ? s_current_game->research_points : 0.0);
+        state->items[SLOT_POPPER]    = item_generate(ore_ch);
         state->has_item[SLOT_POPPER] = true;
         s_items_generated_today++;
     }
@@ -614,7 +655,8 @@ static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
     }
     if (can_generate && (new_btn_result & HOUI_INTERACT_CLICKED))
     {
-        state->items[SLOT_POPPER]    = item_generate();
+        float ore_ch = (float)get_ore_chance(s_current_game ? s_current_game->research_points : 0.0);
+        state->items[SLOT_POPPER]    = item_generate(ore_ch);
         state->has_item[SLOT_POPPER] = true;
         s_items_generated_today++;
     }
@@ -748,13 +790,25 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
             game->stored_energy += s_crafted_energy;
             for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
                 state->has_item[i] = false;
-            
+
+            // Chance to generate a bonus merged item from research
+            float bonus_chance = (float)get_bonus_item_chance(game->research_points);
+            if (GetRandomValue(0, 999) < (int)(bonus_chance * 1000.0f)) {
+                Item merged = merged_item_generate(s_crafted_energy);
+                state->items[SLOT_CRAFTER_0]    = merged;
+                state->has_item[SLOT_CRAFTER_0] = true;
+            }
+
             int discharge = GetRandomValue(0, ARRAY_LENGTH(sounds.discharge) - 1);
             play_random_pitch(sounds.discharge[discharge], 0.1f);
         }
         if (inter & HOUI_INTERACT_HOVERED) {
             Vector2 cur = GetMousePosition();
-            ui_text_tooltip = (UiTextTooltip){ true, "Energize the city", cur.x, cur.y };
+            float bonus_pct = (float)(get_bonus_item_chance(game->research_points) * 100.0);
+            const char* tip = bonus_pct > 0.05f
+                ? TextFormat("Energize the city (+%.1f%% chance to get bonus item)", bonus_pct)
+                : "Energize the city";
+            ui_text_tooltip = (UiTextTooltip){ true, tip, cur.x, cur.y };
         }
     }
     // Send to Research (light blue)
@@ -769,7 +823,7 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
         }
         if (inter & HOUI_INTERACT_HOVERED) {
             Vector2 cur = GetMousePosition();
-            ui_text_tooltip = (UiTextTooltip){ true, "Energize the research facility for a stronger merge multiplier", cur.x, cur.y };
+            ui_text_tooltip = (UiTextTooltip){ true, "Energize the research facility to improve ore discovery and item bonus chances", cur.x, cur.y };
         }
     }
 
@@ -984,7 +1038,10 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
         sx, stat_y, stat_icon_size, "City size");
     sx = render_stat_icon(tex_research,   CLITERAL(Color){120, 190, 220, 255},
         str_research,
-        sx, stat_y, stat_icon_size, TextFormat("x%.2f merge multiplier from research", research_multiplier()));
+        sx, stat_y, stat_icon_size,
+        TextFormat("Ore discovery chance: %.1f%% (base 35%%)\nBonus item chance: %.1f%%",
+            get_ore_chance((double)game->research_points) * 100.0,
+            get_bonus_item_chance((double)game->research_points) * 100.0));
     sx = render_stat_icon(tex_battery_no, CLITERAL(Color){220, 100, 100, 255},
         str_needed,
         sx, stat_y, stat_icon_size, "City needed energy");
@@ -1055,7 +1112,8 @@ bool ui_render(const Game* game)
 
         // auto-generate a new item in the popper slot when one was moved out
         if (drag_from_popper && successfully_placed && s_items_generated_today < ITEM_GENERATES_PER_DAY) {
-            factory_state.items[SLOT_POPPER]    = item_generate();
+            float ore_ch = (float)get_ore_chance(s_current_game ? s_current_game->research_points : 0.0);
+            factory_state.items[SLOT_POPPER]    = item_generate(ore_ch);
             factory_state.has_item[SLOT_POPPER] = true;
             s_items_generated_today++;
         }
@@ -1087,7 +1145,7 @@ bool ui_render(const Game* game)
     }
 
     // flush deferred building tooltip (lowest priority)
-    if (!ui_tooltip.active && !ui_text_tooltip.active && ui_building_tooltip.active)
+    if (!ui_tooltip.active && !ui_text_tooltip.active && ui_building_tooltip.active && !factory_menu_open)
     {
         render_building_tooltip_panel(ui_building_tooltip.building, ui_building_tooltip.x, ui_building_tooltip.y);
         ui_building_tooltip.active = false;
