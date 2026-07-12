@@ -185,18 +185,19 @@ void render_map()
             int random_pole = GetRandomValue(0, pole_sprite.rect_count - 1);
             int random_building = GetRandomValue(0, pole_sprite.rect_count - 1);
 
+            render_sprite_static_atlas(&road.atlas, (Rectangle){0, 0, road.atlas.texture.width, road.atlas.texture.height - 100}, position, 0, WHITE);
             if (cb->filled) {
                 render_sprite_static_atlas_offset(&buildings_shadow.atlas, building_recs[random_building], building_offsets[random_building], position, 0, WHITE);
                 render_sprite_static_atlas_offset(&buildings_albedo.atlas, building_recs[random_building], building_offsets[random_building], position, 0, WHITE);
                 Vector2 pole_position = Vector2Add(position, (Vector2){30, 50});
-                render_sprite_static_atlas_offset(&pole_sprite.atlas, pole_sprite.recs[random_pole], pole_offsets[random_pole], pole_position, 0, WHITE);
+                render_sprite_static_atlas_offset(&pole_sprite.atlas, pole_sprite.recs[random_pole], pole_offsets[random_pole], pole_position, 1, WHITE);
             }
             if(GetRandomValue(0, 100) < 70)
             {
                 int random_tree = GetRandomValue(0, trees_sprite.rect_count - 1);
                 int random_spread = GetRandomValue(-80, 80);
                 Vector2 tree_position = Vector2Add(position, (Vector2){random_spread, 20});
-                render_sprite_static_atlas(&trees_sprite.atlas, trees_sprite.recs[random_tree], tree_position, 0, WHITE);
+                render_sprite_static_atlas(&trees_sprite.atlas, trees_sprite.recs[random_tree], tree_position, 1, WHITE);
             }
 
             // Power-out icon: only on filled buildings that still need energy
@@ -218,6 +219,7 @@ void render_map()
                 };
                 DrawTextEx(font, energy_str, text_pos, font.baseSize, 0, WHITE);
             }
+            
         }
     }
 
@@ -248,7 +250,7 @@ void render_map()
 void game_render()
 {
     BeginDrawing();
-    ClearBackground(DARKGRAY);
+    ClearBackground((Color){161,151,132,0xff});
 
     {
         BeginMode2D(game.camera);

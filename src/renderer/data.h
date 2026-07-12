@@ -126,6 +126,8 @@ Rectangle power_icons_recs[2] = {
 
 static AssetAtlas power_icons = { {"res/icons/power1.png", false, {0}, {0}, {1.0f, 1.0f}, 1.0f, 1, {0}}, sizeof(power_icons_recs) / sizeof(*power_icons_recs), power_icons_recs};
 
+static AssetAtlas road  = { {"res/building/road.png", false, {0}, {0}, {1.0f, 1.0f}, 1.0f, 1, {0}}, 0, 0};
+
 /*
   const char* path;
   bool        loaded;

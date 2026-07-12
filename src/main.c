@@ -72,11 +72,6 @@ int main(void)
 
 void UpdateDrawFrame(void)
 {
-#if defined(PLATFORM_WEB)
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-        EM_ASM(Module.canvas.requestPointerLock(););
-#endif
-
     game_update();
     game_render();
 }
