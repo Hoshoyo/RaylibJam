@@ -143,7 +143,7 @@ ho_button_circle_texture_disabled(Vector2 center, float radius, Texture2D textur
 // font is used for the label. icon_size controls the icon square size.
 // When enabled=false the button is drawn grayed-out and returns no interactions.
 HoUiInteraction
-ho_button_icon_label(Rectangle rect, Texture2D icon, float icon_size, Font font, const char* label, Color base_color, bool enabled)
+ho_button_icon_label(Rectangle rect, Texture2D icon, float icon_size, Font font, const char* label, Color base_color, bool enabled, float animation)
 {
     HoUiInteraction result = {0};
 
@@ -176,8 +176,13 @@ ho_button_icon_label(Rectangle rect, Texture2D icon, float icon_size, Font font,
         if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) result |= HOUI_INTERACT_RIGHT_CLICKED;
     }
 
-    // background
-    DrawRectangleRec(rect, hov ? ColorBrightness(base_color, 0.25f) : base_color);
+    // background — highlighted buttons always pulsate, normal buttons brighten on hover
+    bool  btn_highlighted = (animation != 0.0f);
+    float norm_anim       = ((animation + 1.0f) / 2.0f) * 0.5f;
+    Color bg              = btn_highlighted
+        ? ColorBrightness(base_color, norm_anim)
+        : (hov ? ColorBrightness(base_color, 0.25f) : base_color);
+    DrawRectangleRec(rect, bg);
 
     // bevel: raised normally, inverted when pressed
     Color bevel_lt = pressed ? (Color){80,80,80,255}   : (Color){210,210,210,255};

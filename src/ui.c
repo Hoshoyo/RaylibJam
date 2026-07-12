@@ -24,7 +24,6 @@ static ColorPalette ui_palette;
 #define ARRAY_LENGTH(A) (sizeof(A) / sizeof(*(A)))
 
 extern SoundFxs sounds;
-extern float animation_timer;
 
 // Deferred item tooltip — set during the frame, flushed at the very end of ui_render.
 typedef struct {
@@ -75,6 +74,15 @@ typedef struct {
     DaySummary summary;
 } DayNotification;
 static DayNotification day_notification;
+
+// ── Tutorial state ───────────────────────────────────────────────────
+typedef enum {
+    TUTORIAL_POWER_PLANT = 0,  // initial: POWER PLANT shines, NEXT DAY disabled
+    TUTORIAL_MERGE,            // POWER PLANT clicked: MERGE shines when grid full, NEXT DAY disabled
+    TUTORIAL_NEXT_DAY,         // MERGE clicked: NEXT DAY shines
+    TUTORIAL_DONE,             // NEXT DAY clicked: all normal
+} TutorialState;
+static TutorialState tutorial_state = TUTORIAL_POWER_PLANT;
 
 // ── Slot / drag / drop types ─────────────────────────────────────────────────
 
@@ -209,11 +217,23 @@ static HoUiInteraction ho_button_circle_icon_label(Vector2 center, float radius,
         if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) result |= HOUI_INTERACT_RIGHT_CLICKED;
     }
 
-    animation = ((animation + 1.0f) / 2.0f) * 0.5f;
+    float norm_anim  = ((animation + 1.0f) / 2.0f) * 0.5f; // [0, 0.5]
+    bool  hovered    = (result & HOUI_INTERACT_HOVERED) != 0;
+    bool  highlighted = (animation != 0.0f);
 
-    bool hovered = (result & HOUI_INTERACT_HOVERED) != 0;
+    // Tutorial highlight: outer glow ring that breathes with the sine
+    if (highlighted) {
+        Color glow = color_background;
+        glow.a = (unsigned char)(norm_anim * 2.0f * 160.0f);
+        DrawCircleV(center, radius + border_width + 6.0f + norm_anim * 10.0f, glow);
+    }
+
     DrawCircleV(center, radius + border_width, color_border);
-    DrawCircleV(center, radius, hovered ? ColorBrightness(color_background, animation) : color_background);
+    // Highlighted buttons always pulsate; normal buttons show fixed brightening on hover only
+    Color btn_color = highlighted
+        ? ColorBrightness(color_background, norm_anim)
+        : (hovered ? ColorBrightness(color_background, 0.3f) : color_background);
+    DrawCircleV(center, radius, btn_color);
 
     const float icon_size = radius * 0.9f;
     const float icon_shift_up = radius * 0.28f;
@@ -802,10 +822,13 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
 
     // Merge (dark yellow) — energizes the city
     {
+        float ui_anim    = sinf((float)GetTime() * 3.0f);
+        float merge_anim = (tutorial_state == TUTORIAL_MERGE && grid_full) ? ui_anim : 0.0f;
         HoUiInteraction inter = ho_button_icon_label(
             (Rectangle){btns_x, btns_y, action_btn_width, action_btn_height},
-            tex_energy, icon_size, body_font, "MERGE", (Color){160,120,20,255}, grid_full);
+            tex_energy, icon_size, body_font, "MERGE", (Color){160,120,20,255}, grid_full, merge_anim);
         if (inter & HOUI_INTERACT_CLICKED) {
+            if (tutorial_state == TUTORIAL_MERGE) tutorial_state = TUTORIAL_NEXT_DAY;
             game->stored_energy += s_crafted_energy;
             for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
                 state->has_item[i] = false;
@@ -836,7 +859,7 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
         Rectangle research_rect = {btns_x + action_btn_width + action_btn_gap, btns_y, action_btn_width, action_btn_height};
         HoUiInteraction inter = ho_button_icon_label(
             research_rect,
-            tex_research, icon_size, body_font, "SEND TO RESEARCH", (Color){60,130,170,255}, grid_full && research_unlocked);
+            tex_research, icon_size, body_font, "SEND TO RESEARCH", (Color){60,130,170,255}, grid_full && research_unlocked, 0.0f);
         if (inter & HOUI_INTERACT_CLICKED) {
             game->research_points += s_crafted_energy;
             for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
@@ -986,7 +1009,7 @@ static void render_day_notification(void)
     float panel_w = max_w + pad * 2.0f;
     float panel_h = pad + line_h * line_count - (line_h - font->baseSize) + pad;
 
-    const float btn_radius = 36.0f;
+    const float btn_radius = 44.0f;
     const float btn_margin = 14.0f;
     float panel_x = floorf((WINDOW_WIDTH  - panel_w) * 0.5f);
     float panel_y = WINDOW_HEIGHT - btn_radius * 2.0f - btn_margin - panel_h - 2.0f;
@@ -1013,7 +1036,7 @@ static void render_day_notification(void)
 static void render_home_ui(Game* game, bool* factory_menu_open)
 {
     // ── Bottom action buttons ─────────────────────────────────────────────────
-    const float btn_radius = 36.0f;
+    const float btn_radius = 44.0f;
     const float btn_margin = 14.0f;
     const float btn_y = WINDOW_HEIGHT - btn_radius - btn_margin;
 
@@ -1024,15 +1047,21 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
     const Color factory_color  = CLITERAL(Color){ 140, 30,  30,  255 };
     const Color next_day_color = ui_palette.colors[PALETTE_DARK];
 
+    float ui_anim = sinf((float)GetTime() * 3.0f);
+
     // factory button — opens factory menu
-    if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "POWER PLANT", !(*factory_menu_open), factory_color, game->animation_timer) & HOUI_INTERACT_CLICKED)
+    float factory_anim = (tutorial_state == TUTORIAL_POWER_PLANT) ? ui_anim : 0.0f;
+    if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "POWER PLANT", !(*factory_menu_open), factory_color, factory_anim) & HOUI_INTERACT_CLICKED)
     {
         *factory_menu_open = true;
+        if (tutorial_state == TUTORIAL_POWER_PLANT) tutorial_state = TUTORIAL_MERGE;
         play_random_pitch(sounds.click, 0.1f);
     }
 
-    // next day button — always enabled; distributes stored energy to houses on click
-    if (ho_button_circle_icon_label((Vector2){next_day_x, btn_y}, btn_radius, tex_moon, "NEXT DAY", true, next_day_color, game->animation_timer) & HOUI_INTERACT_CLICKED) {
+    // next day button — disabled during first two tutorial states
+    bool next_day_enabled = (tutorial_state == TUTORIAL_NEXT_DAY || tutorial_state == TUTORIAL_DONE);
+    float next_day_anim   = (tutorial_state == TUTORIAL_NEXT_DAY) ? ui_anim : 0.0f;
+    if (ho_button_circle_icon_label((Vector2){next_day_x, btn_y}, btn_radius, tex_moon, "NEXT DAY", next_day_enabled, next_day_color, next_day_anim) & HOUI_INTERACT_CLICKED) {
         // Collect indices of filled buildings with positive energy demand (center-out order).
         int indices[CITY_GRID * CITY_GRID];
         int count = 0;
@@ -1125,6 +1154,7 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
                 sum_bld_no_energy, sum_ppl_no_energy
             }
         };
+        if (tutorial_state == TUTORIAL_NEXT_DAY) tutorial_state = TUTORIAL_DONE;
     }
 
     // ── Top-right status bar ──────────────────────────────────────────────────
