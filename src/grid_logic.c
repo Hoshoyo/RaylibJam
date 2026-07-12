@@ -62,13 +62,13 @@ static void effect_root_network(const Grid* g, int r, int c, float (*bonus)[GRID
         if (cc != c) add_bonus(g, r, cc, 0.10f, bonus);
 }
 
-// Verdantite — multiply every item with lower nativeQuality by x1.12
+// Verdantite — multiply every item with lower nativeEnergy by x1.12
 static void effect_cultivation(const Grid* g, int r, int c, float (*bonus)[GRID_COLS]) {
-    float self_q = g->items[r][c].nativeQuality;
+    float self_e = g->items[r][c].nativeEnergy;
     for (int rr = 0; rr < GRID_ROWS; ++rr)
         for (int cc = 0; cc < GRID_COLS; ++cc)
             if ((rr != r || cc != c) && g->has_item[rr][cc]
-                && g->items[rr][cc].nativeQuality < self_q)
+                && g->items[rr][cc].nativeEnergy < self_e)
                 bonus[rr][cc] += 0.12f;
 }
 
@@ -85,20 +85,20 @@ static void effect_discharge(const Grid* g, int r, int c, float (*bonus)[GRID_CO
     { add_bonus(g, r, c+1, 0.75f, bonus); }
 
 // Aquarite — multiply the other two items in the same row by x1.35
-static void effect_quality_flow(const Grid* g, int r, int c, float (*bonus)[GRID_COLS]) {
+static void effect_energy_flow(const Grid* g, int r, int c, float (*bonus)[GRID_COLS]) {
     for (int cc = 0; cc < GRID_COLS; ++cc)
         if (cc != c) add_bonus(g, r, cc, 0.35f, bonus);
 }
 
-// Gloamgold — find the highest-quality other item and multiply by x1.35
+// Gloamgold — multiply the highest-energy other item by x1.35
 static void effect_gilding(const Grid* g, int r, int c, float (*bonus)[GRID_COLS]) {
-    float best_q = -1.0f;
+    float best_e = -1.0f;
     int br = -1, bc = -1;
     for (int rr = 0; rr < GRID_ROWS; ++rr)
         for (int cc = 0; cc < GRID_COLS; ++cc)
             if ((rr != r || cc != c) && g->has_item[rr][cc]
-                && g->items[rr][cc].quality > best_q) {
-                best_q = g->items[rr][cc].quality;
+                && g->items[rr][cc].energy > best_e) {
+                best_e = g->items[rr][cc].energy;
                 br = rr; bc = cc;
             }
     if (br >= 0) bonus[br][bc] += 0.35f;
@@ -151,31 +151,31 @@ static void effect_branching_growth(const Grid* g, int r, int c, float (*bonus)[
     add_bonus(g, r+1,   c+1, 0.20f, bonus);
 }
 
-// Voidstone — find the lowest-quality other item and multiply by x2.25
+// Voidstone — find the lowest-energy other item and multiply by x2.25
 static void effect_singularity(const Grid* g, int r, int c, float (*bonus)[GRID_COLS]) {
-    float worst_q = 1e9f;
+    float worst_e = 1e9f;
     int wr = -1, wc = -1;
     for (int rr = 0; rr < GRID_ROWS; ++rr)
         for (int cc = 0; cc < GRID_COLS; ++cc)
             if ((rr != r || cc != c) && g->has_item[rr][cc]
-                && g->items[rr][cc].quality < worst_q) {
-                worst_q = g->items[rr][cc].quality;
+                && g->items[rr][cc].energy < worst_e) {
+                worst_e = g->items[rr][cc].energy;
                 wr = rr; wc = cc;
             }
     if (wr >= 0) bonus[wr][wc] += 1.25f;
 }
 
-// Bloodiron — find highest-quality orthogonal neighbor and multiply by x1.60
+// Bloodiron — find highest-energy orthogonal neighbor and multiply by x1.60
 static void effect_empowerment(const Grid* g, int r, int c, float (*bonus)[GRID_COLS]) {
     static const int dr[] = {-1, 1,  0, 0};
     static const int dc[] = { 0, 0, -1, 1};
-    float best_q = -1.0f;
+    float best_e = -1.0f;
     int br = -1, bc = -1;
     for (int i = 0; i < 4; ++i) {
         int nr = r + dr[i], nc = c + dc[i];
         if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS
-            && g->has_item[nr][nc] && g->items[nr][nc].quality > best_q) {
-            best_q = g->items[nr][nc].quality;
+            && g->has_item[nr][nc] && g->items[nr][nc].energy > best_e) {
+            best_e = g->items[nr][nc].energy;
             br = nr; bc = nc;
         }
     }
@@ -205,31 +205,31 @@ typedef struct {
 } PlacementEffectInfo;
 
 static const PlacementEffectInfo effect_table[ITEM_EFFECT_COUNT] = {
-    [ITEM_EFFECT_NONE]             = { "No effect.",                                                                             effect_none            },
-    [ITEM_EFFECT_COLD_CONDUCTION]  = { "Cold Conduction: multiplies the item directly to its left by x1.45.",                   effect_cold_conduction },
-    [ITEM_EFFECT_FOUNDATION]       = { "Foundation: multiplies the vertical neighbor by x1.20 (above if on bottom row).",       effect_foundation      },
-    [ITEM_EFFECT_DARK_EDGE]        = { "Dark Edge: multiplies the items to its left and right by x1.20 each.",                  effect_dark_edge       },
-    [ITEM_EFFECT_HEAVY_SUPPORT]    = { "Heavy Support: multiplies the item directly to its left by x1.30.",                     effect_heavy_support   },
-    [ITEM_EFFECT_CRIMSON_PULSE]    = { "Crimson Pulse: multiplies every orthogonally adjacent item by x1.18.",                  effect_crimson_pulse   },
-    [ITEM_EFFECT_FROZEN_COLUMN]    = { "Frozen Column: multiplies the other item in the same column by x1.45.",                 effect_frozen_column   },
-    [ITEM_EFFECT_TWILIGHT_ECHO]    = { "Twilight Echo: multiplies every diagonally adjacent item by x1.45.",                    effect_twilight_echo   },
-    [ITEM_EFFECT_ROOT_NETWORK]     = { "Root Network: multiplies the other items in the same row by x1.10.",                    effect_root_network    },
-    [ITEM_EFFECT_CULTIVATION]      = { "Cultivation: multiplies every item with lower base quality by x1.12.",                  effect_cultivation     },
-    [ITEM_EFFECT_GREEN_RESONANCE]  = { "Green Resonance: multiplies every orthogonally adjacent item by x1.35.",                effect_green_resonance },
-    [ITEM_EFFECT_DISCHARGE]        = { "Discharge: multiplies the item directly to its right by x1.75.",                        effect_discharge       },
-    [ITEM_EFFECT_QUALITY_FLOW]     = { "Quality Flow: multiplies the other two items in the same row by x1.35.",                effect_quality_flow    },
-    [ITEM_EFFECT_GILDING]          = { "Gilding: finds the highest-quality other item and multiplies it by x1.35.",             effect_gilding         },
-    [ITEM_EFFECT_GOLDEN_CHAIN]     = { "Golden Chain: multiplies the other items in the same row by x1.30.",                   effect_golden_chain    },
-    [ITEM_EFFECT_RISING_LIGHT]     = { "Rising Light: multiplies every item positioned to its right by x1.15.",                 effect_rising_light    },
-    [ITEM_EFFECT_RADIANCE]         = { "Radiance: multiplies all other items in its row and column by x1.25.",                  effect_radiance        },
-    [ITEM_EFFECT_HEAT_TRANSFER]    = { "Heat Transfer: multiplies the other item in the same column by x1.55.",                 effect_heat_transfer   },
-    [ITEM_EFFECT_TEMPERING]        = { "Tempering: multiplies the items to its left and right by x1.28 each.",                  effect_tempering       },
-    [ITEM_EFFECT_SKYFALL]          = { "Skyfall: multiplies all items in the opposite row by x1.30.",                           effect_skyfall         },
-    [ITEM_EFFECT_BRANCHING_GROWTH] = { "Branching Growth: multiplies same-column item by x1.85, diagonal neighbors by x1.20.", effect_branching_growth},
-    [ITEM_EFFECT_SINGULARITY]      = { "Singularity: finds the lowest-quality other item and multiplies it by x2.25.",          effect_singularity     },
-    [ITEM_EFFECT_EMPOWERMENT]      = { "Empowerment: finds the highest-quality orthogonal neighbor and multiplies it by x1.60.",effect_empowerment     },
-    [ITEM_EFFECT_ABYSSAL_FIELD]    = { "Abyssal Field: multiplies every other item in the grid by x1.18.",                      effect_abyssal_field   },
-    [ITEM_EFFECT_GRIM_FORMATION]   = { "Grim Formation: multiplies all orthogonally adjacent items by x1.16.",                  effect_grim_formation  },
+    [ITEM_EFFECT_NONE]             = { "No effect.",                                                                                            effect_none            },
+    [ITEM_EFFECT_COLD_CONDUCTION]  = { "Cold Conduction: multiplies the energy of the item directly to its left by x1.45.",                     effect_cold_conduction },
+    [ITEM_EFFECT_FOUNDATION]       = { "Foundation: multiplies the energy of the vertical neighbor by x1.20.",                                  effect_foundation      },
+    [ITEM_EFFECT_DARK_EDGE]        = { "Dark Edge: multiplies the energy of the items to its left and right by x1.20 each.",                    effect_dark_edge       },
+    [ITEM_EFFECT_HEAVY_SUPPORT]    = { "Heavy Support: multiplies the energy of the item directly to its left by x1.30.",                       effect_heavy_support   },
+    [ITEM_EFFECT_CRIMSON_PULSE]    = { "Crimson Pulse: multiplies the energy of every orthogonally adjacent item by x1.18.",                    effect_crimson_pulse   },
+    [ITEM_EFFECT_FROZEN_COLUMN]    = { "Frozen Column: multiplies the energy of the other item in the same column by x1.45.",                   effect_frozen_column   },
+    [ITEM_EFFECT_TWILIGHT_ECHO]    = { "Twilight Echo: multiplies the energy of every diagonally adjacent item by x1.45.",                      effect_twilight_echo   },
+    [ITEM_EFFECT_ROOT_NETWORK]     = { "Root Network: multiplies the energy of the other items in the same row by x1.10.",                      effect_root_network    },
+    [ITEM_EFFECT_CULTIVATION]      = { "Cultivation: multiplies the energy of every item with lower base energy by x1.12.",                     effect_cultivation     },
+    [ITEM_EFFECT_GREEN_RESONANCE]  = { "Green Resonance: multiplies the energy of every orthogonally adjacent item by x1.35.",                  effect_green_resonance },
+    [ITEM_EFFECT_DISCHARGE]        = { "Discharge: multiplies the energy of the item directly to its right by x1.75.",                          effect_discharge       },
+    [ITEM_EFFECT_ENERGY_FLOW]      = { "Energy Flow: multiplies the energy of the other item in the same row by x1.35.",                   effect_energy_flow     },
+    [ITEM_EFFECT_GILDING]          = { "Gilding: multiplies the energy of the highest-energy other item in the crafting grid by x1.35.", effect_gilding },
+    [ITEM_EFFECT_GOLDEN_CHAIN]     = { "Golden Chain: multiplies the energy of the other items in the same row by x1.30.",                      effect_golden_chain    },
+    [ITEM_EFFECT_RISING_LIGHT]     = { "Rising Light: multiplies the energy of every item positioned to its right by x1.15.",                   effect_rising_light    },
+    [ITEM_EFFECT_RADIANCE]         = { "Radiance: multiplies the energy of all other items in its row and column by x1.25.",                    effect_radiance        },
+    [ITEM_EFFECT_HEAT_TRANSFER]    = { "Heat Transfer: multiplies the energy of the other item in the same column by x1.55.",                   effect_heat_transfer   },
+    [ITEM_EFFECT_TEMPERING]        = { "Tempering: multiplies the energy of the items to its left and right by x1.28 each.",                    effect_tempering       },
+    [ITEM_EFFECT_SKYFALL]          = { "Skyfall: multiplies the energy of all items in the opposite row by x1.30.",                             effect_skyfall         },
+    [ITEM_EFFECT_BRANCHING_GROWTH] = { "Branching Growth: multiplies the energy of the same-column item by x1.85, and diagonal neighbors by x1.20.", effect_branching_growth},
+    [ITEM_EFFECT_SINGULARITY]      = { "Singularity: multiplies the energy of the lowest-energy other item by x2.25.",                             effect_singularity  },
+    [ITEM_EFFECT_EMPOWERMENT]      = { "Empowerment: multiplies the energy of the highest-energy orthogonal neighbor by x1.60.",                   effect_empowerment  },
+    [ITEM_EFFECT_ABYSSAL_FIELD]    = { "Abyssal Field: multiplies the energy of every other item in the grid by x1.18.",                        effect_abyssal_field   },
+    [ITEM_EFFECT_GRIM_FORMATION]   = { "Grim Formation: multiplies the energy of all orthogonally adjacent items by x1.16.",                    effect_grim_formation  },
 };
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -241,7 +241,7 @@ bool grid_is_full(const Grid* grid)
     return true;
 }
 
-float grid_compute_quality(const Grid* grid)
+float grid_compute_energy(const Grid* grid)
 {
     // Accumulate all bonus portions simultaneously — no chain reactions.
     float bonus[GRID_ROWS][GRID_COLS] = {{0}};
@@ -253,12 +253,12 @@ float grid_compute_quality(const Grid* grid)
                 effect_table[eff].apply(grid, r, c, bonus);
             }
 
-    // Apply placement bonuses and sum raw item qualities
+    // Apply placement bonuses and sum raw item energies
     float total = 0.0f;
     for (int r = 0; r < GRID_ROWS; ++r)
         for (int c = 0; c < GRID_COLS; ++c)
             if (grid->has_item[r][c])
-                total += grid->items[r][c].quality * (1.0f + bonus[r][c]);
+                total += grid->items[r][c].energy * (1.0f + bonus[r][c]);
 
     return total;
 }

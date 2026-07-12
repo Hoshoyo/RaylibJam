@@ -40,9 +40,9 @@ static UiTextTooltip ui_text_tooltip;
 typedef struct {
     bool  active;
     float x, y;
-    float base_quality;
+    float base_energy;
     float multiplier;
-    float final_quality;
+    float final_energy;
 } UiMergeTooltip;
 static UiMergeTooltip ui_merge_tooltip;
 
@@ -88,6 +88,7 @@ static UiDropTarget ui_drop_target;
 static Texture2D tex_close;
 static Texture2D tex_place_item;
 static Texture2D tex_new;
+static Texture2D tex_refresh;
 static Texture2D tex_trash;
 static Texture2D tex_factory;
 static Texture2D tex_research;
@@ -105,6 +106,7 @@ void ui_init() {
     tex_close      = LoadTexture("res/ui/close.png");
     tex_place_item = LoadTexture("res/ui/place_item.png");
     tex_new        = LoadTexture("res/ui/new.png");
+    tex_refresh    = LoadTexture("res/ui/refresh.png");
     tex_trash      = LoadTexture("res/ui/trash.png");
     tex_factory    = LoadTexture("res/ui/factory.png");
     tex_research   = LoadTexture("res/ui/research.png");
@@ -273,18 +275,19 @@ static void draw_raised_panel(float panel_x, float panel_y, float panel_width, f
 
 // Draws one item slot: background, hover highlight (during drag), item icon,
 // drag-start on click, drop-target registration, and tooltip deferral.
-// locked=true: occupied slots cannot be dragged away; empty slots show a lighter bg.
-static void draw_item_slot(Rectangle rect, FactorySlotId id, FactoryMenuState* state, bool locked)
+// check_movable=true: non-movable occupied slots are locked (dark bg, no drag). Set false for the popper slot.
+static void draw_item_slot(Rectangle rect, FactorySlotId id, FactoryMenuState* state, bool force_locked, bool check_movable)
 {
     bool is_drag_source = ui_drag.active && ui_drag.source_slot == id;
     bool hovered = CheckCollisionPointRec(GetMousePosition(), rect);
+    bool item_locked = force_locked
+        || (check_movable && state->has_item[id] && !item_info(state->items[id].id)->movable);
 
-    if (locked && !state->has_item[id])
-        draw_sunken_slot_ex(rect, CLITERAL(Color){ 178, 178, 178, 255 });
-    else if (!state->has_item[id])
-        draw_sunken_slot_ex(rect, CLITERAL(Color){ 178, 178, 178, 255 });
+    // Background: non-movable = darkest; movable = medium; empty/popper = light
+    if (check_movable && state->has_item[id] && !item_info(state->items[id].id)->movable)
+        draw_sunken_slot_ex(rect, CLITERAL(Color){ 130, 130, 130, 255 });
     else
-        draw_sunken_slot(rect);
+        draw_sunken_slot_ex(rect, CLITERAL(Color){ 178, 178, 178, 255 });
 
     // Highlight as valid drop target when dragging over it
     if (ui_drag.active && hovered) {
@@ -302,8 +305,8 @@ static void draw_item_slot(Rectangle rect, FactorySlotId id, FactoryMenuState* s
         item_render(&state->items[id], ix, iy, item_size, false);
     }
 
-    // Begin drag on click — blocked for locked occupied slots
-    if (!locked && !ui_drag.active && hovered && state->has_item[id]
+    // Begin drag on click — blocked if item is not movable
+    if (!item_locked && !ui_drag.active && hovered && state->has_item[id]
         && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
     {
         ui_drag.active      = true;
@@ -394,7 +397,13 @@ static void render_item_description_panel(const Item* item, float x, float y)
     char eff_lines[6][256];
     int  eff_line_count = text_wrap_lines(*font, effect_desc, text_w, eff_lines, 6);
 
-    const float panel_h = padding + line_h * 2.0f + line_h * eff_line_count + padding;
+    bool is_immovable = !item_info(item->id)->movable;
+    const char* immovable_str = "This item cannot be moved once placed in the crafting grid.";
+    char immov_lines[4][256];
+    int  immov_line_count = is_immovable ? text_wrap_lines(*font, immovable_str, text_w, immov_lines, 4) : 0;
+
+    const float panel_h = padding + line_h * 2.0f + line_h * eff_line_count
+                          + (immov_line_count > 0 ? line_h * immov_line_count : 0.0f) + padding;
 
     DrawRectangle((int)x, (int)y, (int)panel_w, (int)panel_h, bg);
     DrawRectangleLinesEx((Rectangle){x, y, panel_w, panel_h}, 1.0f, brd);
@@ -402,24 +411,31 @@ static void render_item_description_panel(const Item* item, float x, float y)
     float tx = x + padding;
     float ty = y + padding;
 
-    // Name — colored by quality tier
+    // Name — colored by energy tier
     Color name_color;
-    if      (item->quality < 1.5f) name_color = CLITERAL(Color){ 160, 160, 160, 255 };
-    else if (item->quality < 3.0f) name_color = CLITERAL(Color){  80, 200,  80, 255 };
-    else if (item->quality < 4.0f) name_color = CLITERAL(Color){  30, 180,  30, 255 };
+    if      (item->energy < 1.5f) name_color = CLITERAL(Color){ 160, 160, 160, 255 };
+    else if (item->energy < 3.0f) name_color = CLITERAL(Color){  80, 200,  80, 255 };
+    else if (item->energy < 4.0f) name_color = CLITERAL(Color){  30, 180,  30, 255 };
     else                           name_color = CLITERAL(Color){ 220,  60,  60, 255 };
     DrawTextEx(*font, TextToUpper(item->name), (Vector2){tx, ty}, font->baseSize, 0, name_color);
     ty += line_h;
 
-    // Quality line: "QUALITY: X.XX"
-    char qual_base[32];
-    snprintf(qual_base, sizeof(qual_base), "QUALITY: %.2f", item->quality);
-    DrawTextEx(*font, qual_base, (Vector2){tx, ty}, font->baseSize, 0, fg);
+    // Energy line: "ENERGY: X.XX"
+    char energy_base[32];
+    snprintf(energy_base, sizeof(energy_base), "ENERGY: %.2f", item->energy);
+    DrawTextEx(*font, energy_base, (Vector2){tx, ty}, font->baseSize, 0, fg);
     ty += line_h;
 
-    // Effect description — word-wrapped, red
+    // Effect description — word-wrapped, light blue
+    const Color eff_blue = CLITERAL(Color){ 120, 190, 220, 255 };
     for (int i = 0; i < eff_line_count; i++) {
-        DrawTextEx(*font, eff_lines[i], (Vector2){tx, ty}, font->baseSize, 0, eff_color);
+        DrawTextEx(*font, eff_lines[i], (Vector2){tx, ty}, font->baseSize, 0, eff_blue);
+        ty += line_h;
+    }
+
+    // Immovable warning — word-wrapped, red
+    for (int i = 0; i < immov_line_count; i++) {
+        DrawTextEx(*font, immov_lines[i], (Vector2){tx, ty}, font->baseSize, 0, eff_color);
         ty += line_h;
     }
 }
@@ -475,7 +491,7 @@ static void render_merge_tooltip_panel(float bx, float by, float base, float mul
     const Color fg  = CLITERAL(Color){ 220, 220, 220, 255 };
     const Color blu = CLITERAL(Color){ 120, 190, 220, 255 };
 
-    char s_prefix[48] = "Craft a new item with greater quality (quality ";
+    char s_prefix[48] = "Craft a new item with greater energy (energy ";
     char s_final[16]; snprintf(s_final, sizeof(s_final), "%.2f", final);
     char s_mid[16]  = " (";
     char s_base[16]; snprintf(s_base,  sizeof(s_base),  "%.2f x ", base);
@@ -512,6 +528,16 @@ static void render_merge_tooltip_panel(float bx, float by, float base, float mul
 }
 
 static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
+    // Auto-populate: if slot is empty, no drag in progress from it, and uses remain, fill it.
+    if (!state->has_item[SLOT_POPPER]
+        && !(ui_drag.active && ui_drag.source_slot == SLOT_POPPER)
+        && s_items_generated_today < ITEM_GENERATES_PER_DAY)
+    {
+        state->items[SLOT_POPPER]    = item_generate();
+        state->has_item[SLOT_POPPER] = true;
+        s_items_generated_today++;
+    }
+
     const float window_x0 = 30.0f;
     const float window_x1 = WINDOW_WIDTH - 30.0f;
     const float panel_padding = 14.0f;
@@ -542,17 +568,18 @@ static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
     const float content_y = start_y + panel_padding + title_area_height + 8.0f;
     const float center_y  = content_y + floorf(content_height * 0.5f);
 
-    // new item button — generates a random item into the popper slot
-    bool can_generate = s_items_generated_today < ITEM_GENERATES_PER_DAY
-                        && !state->has_item[SLOT_POPPER];
+    // reroll button — replaces (or creates) item in the popper slot
+    bool can_generate = s_items_generated_today < ITEM_GENERATES_PER_DAY;
     Vector2 new_btn_center = (Vector2){content_x + btn_radius, center_y};
     HoUiInteraction new_btn_result = can_generate
-        ? ho_button_circle_texture(new_btn_center, btn_radius, tex_new)
-        : ho_button_circle_texture_disabled(new_btn_center, btn_radius, tex_new);
+        ? ho_button_circle_texture(new_btn_center, btn_radius, tex_refresh)
+        : ho_button_circle_texture_disabled(new_btn_center, btn_radius, tex_refresh);
     if (new_btn_result & HOUI_INTERACT_HOVERED) {
         static char tooltip_buf[48];
-        snprintf(tooltip_buf, sizeof(tooltip_buf), "%d/%d remaining daily uses",
-            ITEM_GENERATES_PER_DAY - s_items_generated_today, ITEM_GENERATES_PER_DAY);
+        if (s_items_generated_today >= ITEM_GENERATES_PER_DAY)
+            snprintf(tooltip_buf, sizeof(tooltip_buf), "No more items can be generated today");
+        else
+            snprintf(tooltip_buf, sizeof(tooltip_buf), "Shuffle item");
         ui_text_tooltip = (UiTextTooltip){ true, tooltip_buf, GetMousePosition().x, GetMousePosition().y };
     }
     if (can_generate && (new_btn_result & HOUI_INTERACT_CLICKED))
@@ -562,10 +589,28 @@ static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
         s_items_generated_today++;
     }
 
+    // usage dots above popper slot
+    {
+        float slot_x_dots = content_x + btn_radius * 2.0f + section_gap;
+        float slot_y_dots = content_y + floorf((content_height - large_slot_size) * 0.5f);
+        const float dot_r   = 3.0f;
+        const float dot_gap = 4.0f;
+        float dots_total_w = ITEM_GENERATES_PER_DAY * dot_r * 2.0f + (ITEM_GENERATES_PER_DAY - 1) * dot_gap;
+        float dots_x = slot_x_dots + (large_slot_size - dots_total_w) * 0.5f;
+        float dots_y = slot_y_dots - dot_r * 2.0f - 4.0f;
+        for (int d = 0; d < ITEM_GENERATES_PER_DAY; d++) {
+            Vector2 dc = (Vector2){dots_x + d * (dot_r * 2.0f + dot_gap) + dot_r, dots_y + dot_r};
+            if (d < s_items_generated_today)
+                DrawCircleV(dc, dot_r, CLITERAL(Color){100, 100, 100, 200});
+            else
+                DrawCircleV(dc, dot_r, CLITERAL(Color){220, 220, 220, 230});
+        }
+    }
+
     // large slot
     float slot_x = content_x + btn_radius * 2.0f + section_gap;
     float slot_y = content_y + floorf((content_height - large_slot_size) * 0.5f);
-    draw_item_slot((Rectangle){slot_x, slot_y, large_slot_size, large_slot_size}, SLOT_POPPER, state, false);
+    draw_item_slot((Rectangle){slot_x, slot_y, large_slot_size, large_slot_size}, SLOT_POPPER, state, false, false);
 
     // trash button
     Vector2 trash_center = (Vector2){slot_x + large_slot_size + section_gap + btn_radius, center_y};
@@ -607,10 +652,9 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
     const float panel_width = window_x1 - window_x0;
     const float panel_height = panel_padding + title_area_height + 8.0f + grid_height + energy_row_height + action_area_height + panel_padding;
 
-    // determine lock state and crafted energy
-    bool grid_locked = false;
-    for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
-        if (state->has_item[i]) { grid_locked = true; break; }
+    // determine crafted energy (no grid_locked needed — per-item movable handles it)
+    bool grid_locked = false; // kept for compatibility with draw_item_slot force_locked param
+    (void)grid_locked;
 
     Grid grid = {0};
     for (int r = 0; r < GRID_ROWS; ++r)
@@ -620,7 +664,7 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
             grid.items[r][c]    = state->items[sid];
         }
     bool grid_full = grid_is_full(&grid);
-    s_crafted_energy = grid_full ? grid_compute_quality(&grid) : -1.0f;
+    s_crafted_energy = grid_full ? grid_compute_energy(&grid) : -1.0f;
 
     // panel
     draw_raised_panel(panel_x, start_y, panel_width, panel_height, LIGHTGRAY);
@@ -641,7 +685,7 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
                 small_slot_size, small_slot_size
             };
             FactorySlotId slot_id = (FactorySlotId)(SLOT_CRAFTER_0 + row * grid_cols + col);
-            draw_item_slot(slot, slot_id, state, grid_locked);
+            draw_item_slot(slot, slot_id, state, false, true);
         }
     }
 
@@ -801,33 +845,29 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
     const float btn_margin = 14.0f;
     const float btn_y = WINDOW_HEIGHT - btn_radius - btn_margin;
 
-    // Three buttons right-to-left: Next Day, Power City, Factory
-    const float next_day_x   = WINDOW_WIDTH - btn_radius - btn_margin;
-    const float power_city_x = next_day_x   - btn_radius * 2.0f - btn_margin;
-    const float factory_x    = power_city_x - btn_radius * 2.0f - btn_margin;
+    // Two buttons right-to-left: Next Day, Factory
+    const float next_day_x = WINDOW_WIDTH - btn_radius - btn_margin;
+    const float factory_x  = next_day_x   - btn_radius * 2.0f - btn_margin;
 
-    const Color factory_color    = CLITERAL(Color){ 140, 30,  30,  255 };
-    const Color power_city_color = CLITERAL(Color){ 160, 120, 20,  255 };
-    const Color next_day_color   = ui_palette.colors[PALETTE_DARK];
+    const Color factory_color  = CLITERAL(Color){ 140, 30,  30,  255 };
+    const Color next_day_color = ui_palette.colors[PALETTE_DARK];
 
     // factory button — opens factory menu
     if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "FACTORY", !(*factory_menu_open), factory_color) & HOUI_INTERACT_CLICKED)
         *factory_menu_open = true;
 
-    // power city button — enabled only when stored >= needed and there is a requirement
-    bool can_power = game->needed_energy > 0.0f && game->stored_energy >= game->needed_energy;
-    if (ho_button_circle_icon_label((Vector2){power_city_x, btn_y}, btn_radius, tex_flash, "POWER CITY", can_power, power_city_color) & HOUI_INTERACT_CLICKED) {
-        game->stored_energy -= game->needed_energy;
-        game->needed_energy  = 0.0f;
-        for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
-            int r = i / CITY_GRID, c = i % CITY_GRID;
-            game->city[r][c].needed_energy = 0.0f;
-        }
-    }
-
-    // next day button — disabled while there is still energy required
-    bool next_day_enabled = game->needed_energy <= 0.0f;
+    // next day button — enabled only when stored >= needed (or no requirement yet)
+    bool next_day_enabled = game->needed_energy <= 0.0f
+                            || game->stored_energy >= game->needed_energy;
     if (ho_button_circle_icon_label((Vector2){next_day_x, btn_y}, btn_radius, tex_moon, "NEXT DAY", next_day_enabled, next_day_color) & HOUI_INTERACT_CLICKED) {
+        if (game->needed_energy > 0.0f) {
+            game->stored_energy -= game->needed_energy;
+            game->needed_energy  = 0.0f;
+            for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+                int r = i / CITY_GRID, c = i % CITY_GRID;
+                game->city[r][c].needed_energy = 0.0f;
+            }
+        }
         game_next_day();
     }
 
@@ -916,8 +956,12 @@ bool ui_render(const Game* game)
     // drop resolution — after all slots have registered their hover state
     if (ui_drag.active && IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
     {
+        bool drag_from_popper = (ui_drag.source_slot == SLOT_POPPER);
+        bool successfully_placed = false;
+
         if (ui_drop_target.trash_hovered) {
-            // discard item
+            // discard item — popper slot already cleared when drag started
+            successfully_placed = true;
         } else if (ui_drop_target.any_hovered) {
             FactorySlotId target = ui_drop_target.hovered_slot;
             if (factory_state.has_item[target]) {
@@ -931,6 +975,7 @@ bool ui_render(const Game* game)
                 // move
                 factory_state.items[target]    = ui_drag.item;
                 factory_state.has_item[target] = true;
+                successfully_placed = true;
             }
         } else {
             // return to source slot
@@ -938,6 +983,13 @@ bool ui_render(const Game* game)
             factory_state.has_item[ui_drag.source_slot] = true;
         }
         ui_drag.active = false;
+
+        // auto-generate a new item in the popper slot when one was moved out
+        if (drag_from_popper && successfully_placed && s_items_generated_today < ITEM_GENERATES_PER_DAY) {
+            factory_state.items[SLOT_POPPER]    = item_generate();
+            factory_state.has_item[SLOT_POPPER] = true;
+            s_items_generated_today++;
+        }
     }
 
     // draw drag ghost centered on cursor (above everything)
@@ -969,7 +1021,7 @@ bool ui_render(const Game* game)
     if (!ui_tooltip.active && !ui_text_tooltip.active && ui_merge_tooltip.active)
     {
         render_merge_tooltip_panel(ui_merge_tooltip.x, ui_merge_tooltip.y,
-            ui_merge_tooltip.base_quality, ui_merge_tooltip.multiplier, ui_merge_tooltip.final_quality);
+            ui_merge_tooltip.base_energy, ui_merge_tooltip.multiplier, ui_merge_tooltip.final_energy);
         ui_merge_tooltip.active = false;
     }
 

@@ -72,7 +72,7 @@ typedef enum {
     ITEM_EFFECT_CULTIVATION,       // Verdantite
     ITEM_EFFECT_GREEN_RESONANCE,   // Viridium
     ITEM_EFFECT_DISCHARGE,         // Stormshard
-    ITEM_EFFECT_QUALITY_FLOW,      // Aquarite
+    ITEM_EFFECT_ENERGY_FLOW,       // Aquarite
     ITEM_EFFECT_GILDING,           // Gloamgold
     ITEM_EFFECT_GOLDEN_CHAIN,      // Auricite
     ITEM_EFFECT_RISING_LIGHT,      // Dawnstone
@@ -91,18 +91,19 @@ typedef enum {
 // Static metadata for an item type — never changes at runtime.
 typedef struct {
     const char*        name;
-    float              nativeQuality;
+    float              nativeEnergy;
     float              rarity;
     ItemPlacementEffect effect;
+    bool               movable;   // true = can be dragged out of the crafter grid
 } ItemInfo;
 
 // A concrete item instance held by the game.
 typedef struct {
     ItemId      id;
     const char* name;          // pointer into item_info_table — no ownership
-    float       nativeQuality;
+    float       nativeEnergy;
     float       rarity;
-    float       quality;       // computed/modified at runtime; starts at 0
+    float       energy;        // computed/modified at runtime; starts at 0
 } Item;
 
 // Returns the static metadata for an ItemId (no bounds-check in release).
@@ -112,9 +113,9 @@ const ItemInfo* item_info(ItemId id);
 // Relies on Raylib's GetRandomValue — call after InitWindow.
 Item item_generate(void);
 
-// Create a merged artifact with the given quality, picking a random
+// Create a merged artifact with the given energy, picking a random
 // sprite from the merge_cubes_recs atlas entries.
-Item merged_item_generate(float quality);
+Item merged_item_generate(float energy);
 
 // Register the atlas and source-rect arrays used by item_render.
 // Must be called once after the atlas texture is loaded (e.g. in game_init).

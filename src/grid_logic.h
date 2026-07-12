@@ -15,12 +15,11 @@ typedef struct {
 // Returns true if all GRID_ROWS * GRID_COLS slots are occupied.
 bool grid_is_full(const Grid* grid);
 
-// Computes the final aggregated quality value for the grid,
+// Computes the final aggregated energy value for the grid,
 // applying all placement effects simultaneously (additive bonus model).
 // Bonuses from multiple sources are added (e.g. x1.20 + x1.30 = x1.50).
-// research_bonus is added flat to each occupied item's effective quality.
-// Returns the sum of all modified item qualities.
-float grid_compute_quality(const Grid* grid);
+// Returns the sum of all modified item energies.
+float grid_compute_energy(const Grid* grid);
 
 // Returns the human-readable description of a placement effect.
 const char* grid_effect_description(ItemPlacementEffect effect);
