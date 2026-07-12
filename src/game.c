@@ -268,5 +268,7 @@ void game_render()
 
     EndDrawing();
 
+    game.animation_timer = sinf(GetTime() * 10.0f);
+
     game.tick++;
 }

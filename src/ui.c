@@ -21,6 +21,7 @@ static ColorPalette ui_palette;
 #define ARRAY_LENGTH(A) (sizeof(A) / sizeof(*(A)))
 
 extern SoundFxs sounds;
+extern float animation_timer;
 
 // Deferred item tooltip — set during the frame, flushed at the very end of ui_render.
 typedef struct {
@@ -137,7 +138,7 @@ static float research_multiplier(void)
 
 // circle button with icon shifted up + label text at the bottom
 // bg_color overrides the default palette background color.
-static HoUiInteraction ho_button_circle_icon_label(Vector2 center, float radius, Texture2D icon, const char* label, bool interactive, Color bg_color) {
+static HoUiInteraction ho_button_circle_icon_label(Vector2 center, float radius, Texture2D icon, const char* label, bool interactive, Color bg_color, float animation) {
     HoUiInteraction result = {0};
 
     if (!interactive) {
@@ -177,9 +178,11 @@ static HoUiInteraction ho_button_circle_icon_label(Vector2 center, float radius,
         if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) result |= HOUI_INTERACT_RIGHT_CLICKED;
     }
 
+    animation = ((animation + 1.0f) / 2.0f) * 0.5f;
+
     bool hovered = (result & HOUI_INTERACT_HOVERED) != 0;
     DrawCircleV(center, radius + border_width, color_border);
-    DrawCircleV(center, radius, hovered ? ColorBrightness(color_background, 0.3f) : color_background);
+    DrawCircleV(center, radius, hovered ? ColorBrightness(color_background, animation) : color_background);
 
     const float icon_size = radius * 0.9f;
     const float icon_shift_up = radius * 0.28f;
@@ -882,7 +885,7 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
     const Color next_day_color = ui_palette.colors[PALETTE_DARK];
 
     // factory button — opens factory menu
-    if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "FACTORY", !(*factory_menu_open), factory_color) & HOUI_INTERACT_CLICKED)
+    if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "FACTORY", !(*factory_menu_open), factory_color, game->animation_timer) & HOUI_INTERACT_CLICKED)
     {
         *factory_menu_open = true;
         play_random_pitch(sounds.click, 0.1f);
@@ -891,7 +894,7 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
     // next day button — enabled only when stored >= needed (or no requirement yet)
     bool next_day_enabled = game->needed_energy <= 0.0f
                             || game->stored_energy >= game->needed_energy;
-    if (ho_button_circle_icon_label((Vector2){next_day_x, btn_y}, btn_radius, tex_moon, "NEXT DAY", next_day_enabled, next_day_color) & HOUI_INTERACT_CLICKED) {
+    if (ho_button_circle_icon_label((Vector2){next_day_x, btn_y}, btn_radius, tex_moon, "NEXT DAY", next_day_enabled, next_day_color, game->animation_timer) & HOUI_INTERACT_CLICKED) {
         if (game->needed_energy > 0.0f) {
             game->stored_energy -= game->needed_energy;
             game->needed_energy  = 0.0f;
