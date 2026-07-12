@@ -238,7 +238,7 @@ static void render_factory_menu_base_end(bool* open, float window_height) {
     // title
     Font font = *font_get(FONT_SIZE_TITLE);
     const float title_font_size = font.baseSize;
-    const char* title = "FACTORY MENU";
+    const char* title = "POWER PLANT MENU";
     Vector2 title_size = MeasureTextEx(font, title, title_font_size, 0);
     Vector2 title_pos = (Vector2){
         FACTORY_MENU_X0 + btn_margin,
@@ -629,7 +629,7 @@ static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
     draw_raised_panel(panel_x, start_y, panel_width, panel_height, CLITERAL(Color){ 172, 172, 172, 255 });
 
     // title
-    DrawTextEx(font, "ITEM POPPER",
+    DrawTextEx(font, "INPUT DELIVERY",
         (Vector2){panel_x + panel_padding, start_y + panel_padding},
         title_font_size, 0, CLITERAL(Color){ 30, 30, 30, 255 });
 
@@ -742,7 +742,7 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
     draw_raised_panel(panel_x, start_y, panel_width, panel_height, LIGHTGRAY);
 
     // title
-    DrawTextEx(font, "ITEM CRAFTER",
+    DrawTextEx(font, "HEXA ENERGY MERGER",
         (Vector2){panel_x + panel_padding, start_y + panel_padding},
         title_font_size, 0, CLITERAL(Color){ 30, 30, 30, 255 });
 
@@ -811,11 +811,13 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
             ui_text_tooltip = (UiTextTooltip){ true, tip, cur.x, cur.y };
         }
     }
-    // Send to Research (light blue)
+    // Send to Research (light blue) — locked until city reaches 8 buildings
     {
+        bool research_unlocked = game->city_size >= 8;
+        Rectangle research_rect = {btns_x + action_btn_width + action_btn_gap, btns_y, action_btn_width, action_btn_height};
         HoUiInteraction inter = ho_button_icon_label(
-            (Rectangle){btns_x + action_btn_width + action_btn_gap, btns_y, action_btn_width, action_btn_height},
-            tex_research, icon_size, body_font, "SEND TO RESEARCH", (Color){60,130,170,255}, grid_full);
+            research_rect,
+            tex_research, icon_size, body_font, "SEND TO RESEARCH", (Color){60,130,170,255}, grid_full && research_unlocked);
         if (inter & HOUI_INTERACT_CLICKED) {
             game->research_points += s_crafted_energy;
             for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
@@ -824,6 +826,9 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
         if (inter & HOUI_INTERACT_HOVERED) {
             Vector2 cur = GetMousePosition();
             ui_text_tooltip = (UiTextTooltip){ true, "Energize the research facility to improve ore discovery and item bonus chances", cur.x, cur.y };
+        } else if (!research_unlocked && CheckCollisionPointRec(GetMousePosition(), research_rect)) {
+            Vector2 cur = GetMousePosition();
+            ui_text_tooltip = (UiTextTooltip){ true, "Grow your city to 8 buildings to unlock research!", cur.x, cur.y };
         }
     }
 
@@ -920,7 +925,7 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
     const Color next_day_color = ui_palette.colors[PALETTE_DARK];
 
     // factory button — opens factory menu
-    if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "FACTORY", !(*factory_menu_open), factory_color, game->animation_timer) & HOUI_INTERACT_CLICKED)
+    if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "POWER PLANT", !(*factory_menu_open), factory_color, game->animation_timer) & HOUI_INTERACT_CLICKED)
     {
         *factory_menu_open = true;
         play_random_pitch(sounds.click, 0.1f);
