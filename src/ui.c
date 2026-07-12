@@ -1091,12 +1091,18 @@ bool ui_render(const Game* game)
                 factory_state.items[target]    = ui_drag.item;
                 factory_state.has_item[target] = true;
             } else if (factory_state.has_item[target]) {
-                // swap
-                Item tmp                              = factory_state.items[target];
-                factory_state.items[target]           = ui_drag.item;
-                factory_state.has_item[target]        = true;
-                factory_state.items[ui_drag.source_slot]    = tmp;
-                factory_state.has_item[ui_drag.source_slot] = true;
+                if (!item_info(factory_state.items[target].id)->movable) {
+                    // target is non-moveable — return dragged item to its source
+                    factory_state.items[ui_drag.source_slot]    = ui_drag.item;
+                    factory_state.has_item[ui_drag.source_slot] = true;
+                } else {
+                    // swap
+                    Item tmp                                          = factory_state.items[target];
+                    factory_state.items[target]                       = ui_drag.item;
+                    factory_state.has_item[target]                    = true;
+                    factory_state.items[ui_drag.source_slot]          = tmp;
+                    factory_state.has_item[ui_drag.source_slot]       = true;
+                }
             } else {
                 // move
                 factory_state.items[target]    = ui_drag.item;
