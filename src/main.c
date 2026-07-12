@@ -52,7 +52,7 @@ void UpdateDrawFrame(void);
 
 int main(void)
 {
-    InitWindow(720, 720, "Raylib 6.x Jam");
+    InitWindow(720, 720, "HexaPowerplant Valley");
 
     game_init();
     

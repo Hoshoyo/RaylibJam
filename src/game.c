@@ -417,8 +417,8 @@ void game_render()
 
         EndMode2D();
 
-        ui_hovered_or_active = ui_render(&game);
         objectives_render(&game);
+        ui_hovered_or_active = ui_render(&game);
     }
 
     EndDrawing();
