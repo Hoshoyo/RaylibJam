@@ -274,6 +274,8 @@ void render_map()
         }
     }
 
+    render_sprite_static_atlas(&powerplant.atlas, (Rectangle){0, 0, powerplant.atlas.texture.width, powerplant.atlas.texture.height }, (Vector2){1500, -2200}, 0, WHITE);
+
     // Ambient sound
     SetRandomSeed((int)(GetTime() * 1000.0f));
     if(!IsSoundPlaying(sounds.city[0]) && !IsSoundPlaying(sounds.city[1]))

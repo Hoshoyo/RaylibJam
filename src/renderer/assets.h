@@ -25,6 +25,7 @@ static AssetAtlas* assets[] = {
     &trees_sprite,
     &power_icons,
     &road,
+    &powerplant,
 };
 
 static void load_assets()
