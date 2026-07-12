@@ -118,27 +118,30 @@ void render_map()
             int random_building = GetRandomValue(0, pole_sprite.rect_count - 1);
             int random_pole = GetRandomValue(0, pole_sprite.rect_count - 1);
 
+            render_sprite_static_atlas(&road.atlas, (Rectangle){0, 0, road.atlas.texture.width, road.atlas.texture.height - 100}, position, 0, WHITE);
+
             //if(building_here)
             {
-                render_sprite_static_atlas_offset(&buildings_shadow.atlas, building_recs[random_building], building_offsets[random_building], position, 0, WHITE);
-                render_sprite_static_atlas_offset(&buildings_albedo.atlas, building_recs[random_building], building_offsets[random_building], position, 0, WHITE);
+                render_sprite_static_atlas_offset(&buildings_shadow.atlas, building_recs[random_building], building_offsets[random_building], position, 1, WHITE);
+                render_sprite_static_atlas_offset(&buildings_albedo.atlas, building_recs[random_building], building_offsets[random_building], position, 1, WHITE);
 
                 Vector2 pole_position = Vector2Add(position, (Vector2){30, 50});
-                render_sprite_static_atlas_offset(&pole_sprite.atlas, pole_sprite.recs[random_pole], pole_offsets[random_pole], pole_position, 0, WHITE);
+                render_sprite_static_atlas_offset(&pole_sprite.atlas, pole_sprite.recs[random_pole], pole_offsets[random_pole], pole_position, 1, WHITE);
             }
             if(GetRandomValue(0, 100) < 70)
             {
                 int random_tree = GetRandomValue(0, trees_sprite.rect_count - 1);
                 int random_spread = GetRandomValue(-80, 80);
                 Vector2 tree_position = Vector2Add(position, (Vector2){random_spread, 20});
-                render_sprite_static_atlas(&trees_sprite.atlas, trees_sprite.recs[random_tree], tree_position, 0, WHITE);
+                render_sprite_static_atlas(&trees_sprite.atlas, trees_sprite.recs[random_tree], tree_position, 1, WHITE);
             }
 
             // Power out icon
             if(GetRandomValue(0, 100) < 10)
             {
-                render_sprite_static_atlas(&power_icons.atlas, power_icons_recs[0], Vector2Add(position, (Vector2){0, -100}), 1, WHITE);
+                render_sprite_static_atlas(&power_icons.atlas, power_icons_recs[0], Vector2Add(position, (Vector2){0, -100}), 2, WHITE);
             }
+            
         }
     }
 
@@ -202,7 +205,7 @@ render_items()
 void game_render()
 {
     BeginDrawing();
-    ClearBackground(DARKGRAY);
+    ClearBackground((Color){161,151,132,0xff});
 
     {
         BeginMode2D(game.camera);
