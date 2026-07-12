@@ -1,5 +1,6 @@
 #include "ui.h"
 
+#include <stdio.h>
 #include "game.h"
 #include "item.h"
 #include "font.h"
@@ -76,17 +77,25 @@ static Texture2D tex_factory;
 static Texture2D tex_research;
 static Texture2D tex_energy;
 static Texture2D tex_merge;
+static Texture2D tex_flash;
+static Texture2D tex_battery_no;
+static Texture2D tex_house;
+static Texture2D tex_sun;
 
 void ui_init() {
     ui_palette = palette_mountain_ridge;
-    tex_close     = LoadTexture("res/ui/close.png");
+    tex_close      = LoadTexture("res/ui/close.png");
     tex_place_item = LoadTexture("res/ui/place_item.png");
-    tex_new       = LoadTexture("res/ui/new.png");
-    tex_trash     = LoadTexture("res/ui/trash.png");
-    tex_factory   = LoadTexture("res/ui/factory.png");
-    tex_research  = LoadTexture("res/ui/research.png");
-    tex_energy    = LoadTexture("res/ui/battery.png");
-    tex_merge     = LoadTexture("res/ui/merge.png");
+    tex_new        = LoadTexture("res/ui/new.png");
+    tex_trash      = LoadTexture("res/ui/trash.png");
+    tex_factory    = LoadTexture("res/ui/factory.png");
+    tex_research   = LoadTexture("res/ui/research.png");
+    tex_energy     = LoadTexture("res/ui/battery.png");
+    tex_merge      = LoadTexture("res/ui/merge.png");
+    tex_flash      = LoadTexture("res/ui/flash.png");
+    tex_battery_no = LoadTexture("res/ui/battery_no.png");
+    tex_house      = LoadTexture("res/ui/house.png");
+    tex_sun        = LoadTexture("res/ui/sun.png");
 }
 
 // crafted energy — computed each frame when grid is full, -1 otherwise.
@@ -612,30 +621,132 @@ static void render_factory_menu(bool* open) {
     }
 }
 
-bool ui_render()
+// ── Home UI ──────────────────────────────────────────────────────────────────
+// Always-visible UI layer: bottom action buttons + top-right status bar.
+
+// Renders one status icon + numeric value at (x, y).
+// Returns the x coordinate to use for the next (leftward) item.
+static float render_stat_icon(Texture2D icon, Color tint, const char* value_str,
+                               float x, float y, float icon_size,
+                               const char* tooltip_text)
 {
-    static bool factory_menu_open = false;
-    bool capturing = factory_menu_open || ui_drag.active;
+    Font* font   = font_get(FONT_SIZE_PANEL);
+    Vector2 tsz  = MeasureTextEx(*font, value_str, font->baseSize, 0);
+    const float gap     = 6.0f;
+    const float spacing = 14.0f;
+    float item_w = icon_size + gap + tsz.x;
+    float ix = x - item_w;
 
-    // reset frame-transient drop target
-    ui_drop_target = (UiDropTarget){0};
+    DrawTexturePro(icon,
+        (Rectangle){0, 0, (float)icon.width, (float)icon.height},
+        (Rectangle){ix, y, icon_size, icon_size},
+        (Vector2){0, 0}, 0.0f, tint);
+    DrawTextEx(*font, value_str,
+        (Vector2){ix + icon_size + gap, y + floorf((icon_size - font->baseSize) * 0.5f)},
+        font->baseSize, 0, tint);
 
-    // top-right buttons (factory + research)
+    // tooltip hover region
+    Rectangle hover_rect = (Rectangle){ix, y, item_w, icon_size};
+    if (CheckCollisionPointRec(GetMousePosition(), hover_rect)) {
+        Vector2 cur = GetMousePosition();
+        ui_text_tooltip = (UiTextTooltip){ true, tooltip_text, cur.x + 12.0f, cur.y + 4.0f };
+    }
+
+    return ix - spacing;
+}
+
+static void render_home_ui(const Game* game, bool* factory_menu_open)
+{
+    // ── Bottom action buttons ─────────────────────────────────────────────────
     const float btn_radius = 36.0f;
     const float btn_margin = 14.0f;
     const float btn_y = WINDOW_HEIGHT - btn_radius - btn_margin;
-    const float research_x = WINDOW_WIDTH - btn_radius - btn_margin;
-    const float factory_x  = research_x - btn_radius * 2.0f - btn_margin;
 
-    // factory button — opens factory menu
-    if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "FACTORY", !factory_menu_open) & HOUI_INTERACT_CLICKED)
-    {
-        factory_menu_open = true;
-    }
+    // Three buttons right-to-left: Research, Factory, Power City
+    const float research_x   = WINDOW_WIDTH - btn_radius - btn_margin;
+    const float factory_x    = research_x  - btn_radius * 2.0f - btn_margin;
+    const float power_city_x = factory_x   - btn_radius * 2.0f - btn_margin;
 
     // research button (placeholder)
     ho_button_circle_icon_label((Vector2){research_x, btn_y}, btn_radius, tex_research, "RESEARCH", true);
 
+    // factory button — opens factory menu
+    if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "FACTORY", !(*factory_menu_open)) & HOUI_INTERACT_CLICKED)
+        *factory_menu_open = true;
+
+    // power city button (placeholder)
+    ho_button_circle_icon_label((Vector2){power_city_x, btn_y}, btn_radius, tex_flash, "POWER CITY", true);
+
+    // ── Top-right status bar ──────────────────────────────────────────────────
+    const float stat_icon_size = 24.0f;
+    const float stat_margin    = 14.0f;
+    const float stat_pad       = 10.0f;  // padding inside the background rect
+    const float stat_y         = stat_margin;
+
+    // Helpers to measure one stat item width (icon + gap + text)
+    Font* stat_font = font_get(FONT_SIZE_PANEL);
+    const float gap = 6.0f;
+    const float spacing = 14.0f;
+    #define STAT_ITEM_W(value_str) \
+        (stat_icon_size + gap + MeasureTextEx(*stat_font, (value_str), stat_font->baseSize, 0).x)
+
+    // Pre-compute total bar width to draw the background first
+    char str_day[16], str_city[16], str_research[16], str_needed[16], str_stored[16];
+    snprintf(str_day,      sizeof(str_day),      "%d",   game->day);
+    snprintf(str_city,     sizeof(str_city),     "%d",   game->city_size);
+    snprintf(str_research, sizeof(str_research), "%.1f", game->research_points);
+    snprintf(str_needed,   sizeof(str_needed),   "%.1f", game->needed_energy);
+    snprintf(str_stored,   sizeof(str_stored),   "%.1f", game->stored_energy);
+
+    float total_w = STAT_ITEM_W(str_day) + spacing
+                  + STAT_ITEM_W(str_city) + spacing
+                  + STAT_ITEM_W(str_research) + spacing
+                  + STAT_ITEM_W(str_needed) + spacing
+                  + STAT_ITEM_W(str_stored);
+    #undef STAT_ITEM_W
+
+    float bg_x = (float)WINDOW_WIDTH - stat_margin - total_w - stat_pad;
+    float bg_y = stat_y - stat_pad;
+    float bg_w = total_w + stat_pad * 2.0f;
+    float bg_h = stat_icon_size + stat_pad * 2.0f;
+    DrawRectangleRounded(
+        (Rectangle){bg_x, bg_y, bg_w, bg_h},
+        0.4f, 8,
+        CLITERAL(Color){ 30, 30, 30, 160 });
+
+    // Draw icons left-to-right (render_stat_icon advances right-to-left)
+    float sx = (float)WINDOW_WIDTH - stat_margin;
+    sx = render_stat_icon(tex_sun,        WHITE,
+        str_day,
+        sx, stat_y, stat_icon_size, "Days passed");
+    sx = render_stat_icon(tex_house,      WHITE,
+        str_city,
+        sx, stat_y, stat_icon_size, "City size");
+    sx = render_stat_icon(tex_research,   CLITERAL(Color){120, 190, 220, 255},
+        str_research,
+        sx, stat_y, stat_icon_size, "Research points");
+    sx = render_stat_icon(tex_battery_no, CLITERAL(Color){220, 100, 100, 255},
+        str_needed,
+        sx, stat_y, stat_icon_size, "City needed energy");
+    sx = render_stat_icon(tex_energy,     CLITERAL(Color){240, 220, 100, 255},
+        str_stored,
+        sx, stat_y, stat_icon_size, "City stored energy, ready to use");
+    (void)sx;
+}
+
+bool ui_render(const Game* game)
+{
+    static bool factory_menu_open = false;
+    bool capturing = factory_menu_open || ui_drag.active;
+
+    // reset frame-transient drop target and text tooltip
+    ui_drop_target   = (UiDropTarget){0};
+    ui_text_tooltip  = (UiTextTooltip){0};
+
+    // ── Home UI (always visible) ─────────────────────────────────────────────
+    render_home_ui(game, &factory_menu_open);
+
+    // ── Module: Factory Menu ─────────────────────────────────────────────────
     if (factory_menu_open) {
         render_factory_menu(&factory_menu_open);
     }

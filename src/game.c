@@ -14,6 +14,11 @@ void game_init()
 {
     game.camera.zoom = 0.5f;
     game.camera.target = (Vector2){-360.0f, -360.0f};
+    game.stored_energy   = 0.0f;
+    game.needed_energy   = 0.0f;
+    game.research_points = 0.0f;
+    game.city_size       = 1;
+    game.day             = 1;
 
     font_init();
     ui_init();
@@ -126,7 +131,7 @@ void game_render()
         //debug_slider(0, &building_offsets[xx].x, -200.0f, 200.0f);
         //debug_slider(1, &building_offsets[xx].y, -200.0f, 200.0f);
 
-        ui_hovered_or_active = ui_render();
+        ui_hovered_or_active = ui_render(&game);
     }
 
     EndDrawing();

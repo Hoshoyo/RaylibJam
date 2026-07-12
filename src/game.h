@@ -8,6 +8,11 @@
 typedef struct {
     uint64_t tick;
     Camera2D camera;
+    float stored_energy;
+    float needed_energy;
+    float research_points;
+    int   city_size;
+    int   day;
 } Game;
 
 void LoadSave(void);
