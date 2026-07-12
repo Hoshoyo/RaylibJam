@@ -1,6 +1,7 @@
 #pragma once
 #include "renderer.h"
 #include <stdbool.h>
+#include "../game.h"
 
 typedef struct {
     SpriteStaticAtlas atlas;
@@ -41,14 +42,7 @@ static void load_assets()
     character[0].shadow.atlas.texture = LoadTexture(character->shadow.filepath);
 }
 
-typedef struct {
-    float master_volume;
-    Sound city[2];
-    Sound birds;
-    Sound discharge[2];
-    Sound click;
-} SoundFxs;
-static SoundFxs sounds;
+SoundFxs sounds;
 
 static void load_sounds()
 {

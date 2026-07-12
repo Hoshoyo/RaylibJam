@@ -169,8 +169,10 @@ Vector2 iso_pos(Vector2 ortho)
 
 void render_map()
 {
+    Vector2 mouse_world = GetScreenToWorld2D(GetMousePosition(), game.camera);
+
     #define GRID_SIZE 180
-    #if 1
+
     SetRandomSeed(456);
     for(int y = 8; y > -8; --y)
     {
@@ -185,10 +187,18 @@ void render_map()
             int random_pole = GetRandomValue(0, pole_sprite.rect_count - 1);
             int random_building = GetRandomValue(0, pole_sprite.rect_count - 1);
 
+            Rectangle bbox = (Rectangle){position.x-100.0f, position.y-200.0f, 200, 300};
+            Color hover_tint = WHITE;
+            if(CheckCollisionPointRec(mouse_world, bbox))
+            {
+                // Do here logic if the building is hovered
+                hover_tint = ColorBrightness(GREEN, 0.5f);
+            }
+
             render_sprite_static_atlas(&road.atlas, (Rectangle){0, 0, road.atlas.texture.width, road.atlas.texture.height - 100}, position, 0, WHITE);
             if (cb->filled) {
                 render_sprite_static_atlas_offset(&buildings_shadow.atlas, building_recs[random_building], building_offsets[random_building], position, 1, WHITE);
-                render_sprite_static_atlas_offset(&buildings_albedo.atlas, building_recs[random_building], building_offsets[random_building], position, 1, WHITE);
+                render_sprite_static_atlas_offset(&buildings_albedo.atlas, building_recs[random_building], building_offsets[random_building], position, 1, hover_tint);
                 Vector2 pole_position = Vector2Add(position, (Vector2){30, 50});
                 render_sprite_static_atlas_offset(&pole_sprite.atlas, pole_sprite.recs[random_pole], pole_offsets[random_pole], pole_position, 1, WHITE);
             }
@@ -218,33 +228,24 @@ void render_map()
                     icon_pos.y + icon_size + 2.0f
                 };
                 DrawTextEx(font, energy_str, text_pos, font.baseSize, 0, WHITE);
+                //DrawTextEx(font, TextFormat("%.2f %.2f", position.x, position.y), text_pos, font.baseSize, 0, WHITE);
             }
             
         }
     }
 
-    SetRandomSeed((int)(GetTime() * 1000.0f));
     // Ambient sound
+    SetRandomSeed((int)(GetTime() * 1000.0f));
     if(!IsSoundPlaying(sounds.city[0]) && !IsSoundPlaying(sounds.city[1]))
     {
-        PlaySound(sounds.city[GetRandomValue(0, ARRAY_LENGTH(sounds.city) - 1)]);
+        int ambient = GetRandomValue(0, ARRAY_LENGTH(sounds.city) - 1);
+        PlaySound(sounds.city[ambient]);
+        TraceLog(LOG_INFO, "Changed ambient sound to %d", ambient);
     }
     if(!IsSoundPlaying(sounds.birds))
     {
         PlaySound(sounds.birds);
     }
-
-    if(IsKeyPressed('Q'))
-    {
-        play_random_pitch(sounds.click, 0.1f);
-    }
-    if(IsKeyPressed('E'))
-    {
-        int discharge = GetRandomValue(0, ARRAY_LENGTH(sounds.discharge) - 1);
-        //PlaySound(sounds.discharge[discharge]);
-        play_random_pitch(sounds.discharge[discharge], 0.1f);
-    }
-    #endif
 }
 
 void game_render()
@@ -262,7 +263,6 @@ void game_render()
 
         EndMode2D();
 
-        DrawText(TextFormat("%f", game.camera.zoom), 0, 0, 20, WHITE);
         ui_hovered_or_active = ui_render(&game);
     }
 

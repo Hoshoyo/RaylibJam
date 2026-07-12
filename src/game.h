@@ -34,3 +34,13 @@ void game_next_day(void);
 void game_init();
 void game_update();
 void game_render();
+
+typedef struct {
+    float master_volume;
+    Sound city[2];
+    Sound birds;
+    Sound discharge[2];
+    Sound click;
+} SoundFxs;
+
+void play_random_pitch(Sound sound, float range);

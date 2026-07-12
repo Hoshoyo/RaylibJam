@@ -200,7 +200,7 @@ ho_button_icon_label(Rectangle rect, Texture2D icon, float icon_size, Font font,
     Vector2 sz = MeasureTextEx(font, label, font.baseSize, 0);
     float text_x = rect.x + floorf((rect.width - sz.x) * 0.5f) + (icon_size + icon_margin) * 0.5f;
     float text_y = rect.y + floorf((rect.height - sz.y) * 0.5f);
-    DrawTextEx(font, label, (Vector2){text_x, text_y}, font.baseSize, 0, WHITE);
+    DrawTextEx(font, label, (Vector2){text_x, text_y}, font.baseSize, 0, WHITE);    
 
     return result;
 }

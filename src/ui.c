@@ -18,6 +18,10 @@ static ColorPalette ui_palette;
 #define FACTORY_MENU_X1 (WINDOW_WIDTH - 30.0f)
 #define FACTORY_MENU_Y1 (WINDOW_WIDTH - 30.0f)
 
+#define ARRAY_LENGTH(A) (sizeof(A) / sizeof(*(A)))
+
+extern SoundFxs sounds;
+
 // Deferred item tooltip — set during the frame, flushed at the very end of ui_render.
 typedef struct {
     bool        active;
@@ -740,6 +744,9 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
             game->stored_energy += s_crafted_energy;
             for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
                 state->has_item[i] = false;
+            
+            int discharge = GetRandomValue(0, ARRAY_LENGTH(sounds.discharge) - 1);
+            play_random_pitch(sounds.discharge[discharge], 0.1f);
         }
         if (inter & HOUI_INTERACT_HOVERED) {
             Vector2 cur = GetMousePosition();
@@ -876,7 +883,10 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
 
     // factory button — opens factory menu
     if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "FACTORY", !(*factory_menu_open), factory_color) & HOUI_INTERACT_CLICKED)
+    {
         *factory_menu_open = true;
+        play_random_pitch(sounds.click, 0.1f);
+    }
 
     // next day button — enabled only when stored >= needed (or no requirement yet)
     bool next_day_enabled = game->needed_energy <= 0.0f
@@ -890,6 +900,7 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
                 game->city[r][c].needed_energy = 0.0f;
             }
         }
+        play_random_pitch(sounds.click, 0.1f);
         game_next_day();
     }
 
