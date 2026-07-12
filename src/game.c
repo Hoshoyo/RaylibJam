@@ -84,6 +84,16 @@ void resize_city(int new_size)
 // Base energy demand increase per building per day (tweak this).
 #define ENERGY_PER_HOUSE_BASE 1.5f
 
+bool is_everyone_happy_now(void)
+{
+    for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+        int r = i / CITY_GRID, c = i % CITY_GRID;
+        if (game.city[r][c].filled && game.city[r][c].days_without_energy != 0)
+            return false;
+    }
+    return true;
+}
+
 void game_next_day(bool allow_growth)
 {
     if (allow_growth) {
