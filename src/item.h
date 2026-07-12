@@ -40,13 +40,23 @@ typedef enum {
     ITEM_ABYSSITE,
     ITEM_GRIMSTEEL,
 
+    // ── Merged artifacts (6) ─────────────────────────────────────────────────
+    ITEM_MERGED_1,
+    ITEM_MERGED_2,
+    ITEM_MERGED_3,
+    ITEM_MERGED_4,
+    ITEM_MERGED_5,
+    ITEM_MERGED_6,
+
     ITEM_COUNT,
 
     // Range markers (not real enum values, just aliases for bounds checking)
-    ITEM_ROCK_BEGIN = ITEM_BLACKROCK_1,
-    ITEM_ROCK_END   = ITEM_FROSTSILVER,   // exclusive upper bound
-    ITEM_ORE_BEGIN  = ITEM_FROSTSILVER,
-    ITEM_ORE_END    = ITEM_COUNT,         // exclusive upper bound
+    ITEM_ROCK_BEGIN   = ITEM_BLACKROCK_1,
+    ITEM_ROCK_END     = ITEM_FROSTSILVER,   // exclusive upper bound
+    ITEM_ORE_BEGIN    = ITEM_FROSTSILVER,
+    ITEM_ORE_END      = ITEM_MERGED_1,      // exclusive upper bound
+    ITEM_MERGED_BEGIN = ITEM_MERGED_1,
+    ITEM_MERGED_END   = ITEM_COUNT,         // exclusive upper bound
 } ItemId;
 
 typedef enum {
@@ -102,10 +112,16 @@ const ItemInfo* item_info(ItemId id);
 // Relies on Raylib's GetRandomValue — call after InitWindow.
 Item item_generate(void);
 
+// Create a merged artifact with the given quality, picking a random
+// sprite from the merge_cubes_recs atlas entries.
+Item merged_item_generate(float quality);
+
 // Register the atlas and source-rect arrays used by item_render.
 // Must be called once after the atlas texture is loaded (e.g. in game_init).
-void item_render_init(Texture2D atlas, Rectangle* rock_recs, int rock_count,
-                      Rectangle* ore_recs,  int ore_count);
+void item_render_init(Texture2D atlas,
+                      Rectangle* rock_recs,   int rock_count,
+                      Rectangle* ore_recs,    int ore_count,
+                      Rectangle* merged_recs, int merged_count);
 
 // Render an item icon at screen position (x, y) scaled to `size` pixels.
 // If show_name is true, draws the item name at the bottom-left of the quad.

@@ -118,6 +118,27 @@ ho_button_circle_texture(Vector2 center, float radius, Texture2D texture)
     return result;
 }
 
+static HoUiInteraction
+ho_button_circle_texture_disabled(Vector2 center, float radius, Texture2D texture)
+{
+    HoUiInteraction result = {0};
+
+    if (CheckCollisionPointCircle(GetMousePosition(), center, radius))
+        result |= HOUI_INTERACT_HOVERED;
+
+    DrawCircleV(center, radius + 2.0f, CLITERAL(Color){ 60,  60,  60, 255 });
+    DrawCircleV(center, radius,        CLITERAL(Color){ 90,  90,  90, 255 });
+
+    float tex_size = radius * 1.2f;
+    DrawTexturePro(texture,
+        (Rectangle){0, 0, texture.width, texture.height},
+        (Rectangle){center.x - tex_size*0.5f, center.y - tex_size*0.5f, tex_size, tex_size},
+        (Vector2){0,0}, 0.0f,
+        CLITERAL(Color){255, 255, 255, 80});
+
+    return result;
+}
+
 // Rectangular button with an icon left-aligned and label centered in remaining space.
 // font is used for the label. icon_size controls the icon square size.
 // When enabled=false the button is drawn grayed-out and returns no interactions.

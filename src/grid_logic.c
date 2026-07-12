@@ -253,7 +253,7 @@ float grid_compute_quality(const Grid* grid)
                 effect_table[eff].apply(grid, r, c, bonus);
             }
 
-    // Apply multipliers and sum
+    // Apply placement bonuses and sum raw item qualities
     float total = 0.0f;
     for (int r = 0; r < GRID_ROWS; ++r)
         for (int c = 0; c < GRID_COLS; ++c)

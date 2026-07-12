@@ -2,6 +2,8 @@
 #include "renderer/renderer.h"
 #include "renderer/assets.h"
 
+#include <stdlib.h>
+
 #include "ui.h"
 #include "item.h"
 #include "font.h"
@@ -10,6 +12,91 @@ static Game game;
 static bool ui_hovered_or_active;
 static Vector2 camera_position;
 
+static Vector2 iso_pos(Vector2 ortho);
+
+static int s_fill_order[CITY_GRID * CITY_GRID];
+
+static int fill_order_cmp(const void* a, const void* b)
+{
+    int ia = *(const int*)a, ib = *(const int*)b;
+    float ra = (float)(ia / CITY_GRID), ca = (float)(ia % CITY_GRID) - 7.5f;
+    float rb = (float)(ib / CITY_GRID), cb = (float)(ib % CITY_GRID) - 7.5f;
+    float da = ra*ra + ca*ca, db = rb*rb + cb*cb;
+    if (da != db) return (da > db) - (da < db);
+    return ia - ib;
+}
+
+void city_init(int building_count)
+{
+    for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+        int r = i / CITY_GRID, c = i % CITY_GRID;
+        game.city[r][c] = (City_Building){ false, 0.0f, GetRandomValue(0, building_count - 1) };
+        s_fill_order[i] = i;
+    }
+    qsort(s_fill_order, CITY_GRID * CITY_GRID, sizeof(int), fill_order_cmp);
+}
+
+void resize_city(int new_size)
+{
+    for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+        int idx = s_fill_order[i];
+        game.city[idx / CITY_GRID][idx % CITY_GRID].filled = (i < new_size);
+    }
+}
+
+// Base energy demand increase per building per day (tweak this).
+#define ENERGY_PER_HOUSE_BASE 1.5f
+
+void game_next_day()
+{
+    // Grow city by 1-3 new buildings.
+    int new_houses = GetRandomValue(1, 3);
+    game.city_size += new_houses;
+    if (game.city_size > CITY_GRID * CITY_GRID)
+        game.city_size = CITY_GRID * CITY_GRID;
+    resize_city(game.city_size);
+
+    // Increase each existing building's energy demand.
+    // Formula: base * day_scale * random_factor
+    //   day_scale  = 1 + (day-1)*0.15  → +15% per day
+    //   random_factor ∈ [0.8, 1.2]
+    float day_scale = 1.0f + (game.day - 1) * 0.15f;
+    for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+        int r = i / CITY_GRID, c = i % CITY_GRID;
+        if (!game.city[r][c].filled) continue;
+        float rand_factor = 0.8f + GetRandomValue(0, 40) / 100.0f;
+        game.city[r][c].needed_energy += ENERGY_PER_HOUSE_BASE * day_scale * rand_factor;
+    }
+
+    // Aggregate total energy demand across all buildings.
+    float total = 0.0f;
+    for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+        int r = i / CITY_GRID, c = i % CITY_GRID;
+        if (game.city[r][c].filled)
+            total += game.city[r][c].needed_energy;
+    }
+    game.needed_energy = total;
+
+    game.day++;
+}
+
+void play_random_pitch(Sound sound, float range)
+{
+    int v = GetRandomValue(-100, 100);
+    float f = ((float)v / 100.0f) * range;
+    SetSoundPitch(sound, 1.0f + f);
+    PlaySound(sound);
+}
+
+void update_city_sound()
+{
+    float value = (game.camera.zoom > 0.4f) ? 0.2f : 0.1f;
+
+    SetSoundVolume(sounds.city[0], sounds.master_volume * value);
+    SetSoundVolume(sounds.city[1], sounds.master_volume * value);
+    SetSoundVolume(sounds.birds, sounds.master_volume * value * 2.5f);
+}
+
 void game_init()
 {
     game.camera.zoom = 0.5f;
@@ -17,15 +104,27 @@ void game_init()
     game.stored_energy   = 0.0f;
     game.needed_energy   = 0.0f;
     game.research_points = 0.0f;
-    game.city_size       = 1;
+    game.city_size       = 4;
     game.day             = 1;
 
     font_init();
     ui_init();
     load_assets();
     item_render_init(items_sprite.atlas.texture,
-                     rock_icons_recs, ARRAY_LENGTH(rock_icons_recs),
-                     merged_icons_recs, ARRAY_LENGTH(merged_icons_recs));
+                     rock_icons_recs,   ARRAY_LENGTH(rock_icons_recs),
+                     merged_icons_recs, ARRAY_LENGTH(merged_icons_recs),
+                     merge_cubes_recs,  ARRAY_LENGTH(merge_cubes_recs));
+    load_sounds();
+    update_city_sound();
+    city_init(ARRAY_LENGTH(building_recs));
+    resize_city(game.city_size);
+
+    // Point camera at building #1 (first in fill order)
+    int b0 = s_fill_order[0];
+    camera_position = iso_pos((Vector2){
+        (float)((b0 % CITY_GRID) - 8) * 180.0f,
+        (float)(8 - b0 / CITY_GRID)   * 180.0f,
+    });
 }
 
 void game_update()
@@ -40,8 +139,16 @@ void game_update()
 
     // Zoom control
     float wheel = GetMouseWheelMove();
-    if(wheel > 0 && game.camera.zoom < 2.0f)      game.camera.zoom *= 2.0f;
-    else if(wheel < 0 && game.camera.zoom >= 0.5f) game.camera.zoom /= 2.0f;
+    if(wheel > 0 && game.camera.zoom < 2.0f)
+    {
+        game.camera.zoom *= 2.0f;
+        update_city_sound();
+    }
+    else if(wheel < 0 && game.camera.zoom >= 0.5f)
+    {
+        game.camera.zoom /= 2.0f;
+        update_city_sound();
+    }
 
     // Recenter camera
     Vector2 center = {
@@ -80,33 +187,50 @@ void render_map()
     #define GRID_SIZE 180
     #if 1
     SetRandomSeed(456);  // deterministic map geometry every frame
-    int j = 0;
     for(int y = 8; y > -8; --y)
     {
         for(int x = -8; x < 8; ++x)
         {
+            int row = 8 - y;
+            int col = x + 8;
+            const City_Building* cb = &game.city[row][col];
+
             Vector2 position = (Vector2){x * GRID_SIZE, y * GRID_SIZE};
             position = iso_pos(position);
-            int random_building = GetRandomValue(0, pole_sprite.rect_count - 1);
             int random_pole = GetRandomValue(0, pole_sprite.rect_count - 1);
 
-            //if(GetRandomValue(0, 100) < 20)
-            {
-                render_sprite_static_atlas_offset(&buildings_shadow.atlas, building_recs[random_building], building_offsets[random_building], position, 0, WHITE);
-                render_sprite_static_atlas_offset(&buildings_albedo.atlas, building_recs[random_building], building_offsets[random_building], position, 0, WHITE);
-
+            if (cb->filled) {
+                render_sprite_static_atlas_offset(&buildings_shadow.atlas, building_recs[cb->render_ref], building_offsets[cb->render_ref], position, 0, WHITE);
+                render_sprite_static_atlas_offset(&buildings_albedo.atlas, building_recs[cb->render_ref], building_offsets[cb->render_ref], position, 0, WHITE);
                 Vector2 pole_position = Vector2Add(position, (Vector2){30, 50});
                 render_sprite_static_atlas_offset(&pole_sprite.atlas, pole_sprite.recs[random_pole], pole_offsets[random_pole], pole_position, 0, WHITE);
             }
-            
-            ///DrawRectangleV(position, (Vector2){200, 200}, RED);
-            //DrawRectanglePro((Rectangle){position.x - 200, position.y - 200, 50, 1000}, (Vector2){0}, 45, BLACK);
         }
+    }
+
+    SetRandomSeed((int)(GetTime() * 1000.0f));
+    // Ambient sound
+    if(!IsSoundPlaying(sounds.city[0]) && !IsSoundPlaying(sounds.city[1]))
+    {
+        PlaySound(sounds.city[GetRandomValue(0, ARRAY_LENGTH(sounds.city) - 1)]);
+    }
+    if(!IsSoundPlaying(sounds.birds))
+    {
+        PlaySound(sounds.birds);
+    }
+
+    if(IsKeyPressed('Q'))
+    {
+        play_random_pitch(sounds.click, 0.1f);
+    }
+    if(IsKeyPressed('E'))
+    {
+        int discharge = GetRandomValue(0, ARRAY_LENGTH(sounds.discharge) - 1);
+        //PlaySound(sounds.discharge[discharge]);
+        play_random_pitch(sounds.discharge[discharge], 0.1f);
     }
     #endif
 }
-
-
 
 void game_render()
 {
@@ -117,20 +241,13 @@ void game_render()
         BeginMode2D(game.camera);
     
         render_queue_flush();
+
         render_map();
         SetRandomSeed((unsigned int)(GetTime() * 100000.0));  // restore varying seed after map
 
         EndMode2D();
 
-        static int xx = 0;
-        if(IsKeyPressed('X'))
-        {
-            xx = (xx + 1) % ARRAY_LENGTH(building_offsets);
-        }
-        DrawText(TextFormat("%d", xx), 0, GetScreenHeight() - 40.0f, 20, WHITE);
-        //debug_slider(0, &building_offsets[xx].x, -200.0f, 200.0f);
-        //debug_slider(1, &building_offsets[xx].y, -200.0f, 200.0f);
-
+        DrawText(TextFormat("%f", game.camera.zoom), 0, 0, 20, WHITE);
         ui_hovered_or_active = ui_render(&game);
     }
 

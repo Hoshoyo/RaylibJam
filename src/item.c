@@ -41,6 +41,14 @@ static const ItemInfo item_info_table[ITEM_COUNT] = {
     [ITEM_BLOODIRON]   = { "Bloodiron",   3.2f, 2.2f, ITEM_EFFECT_EMPOWERMENT       },
     [ITEM_ABYSSITE]    = { "Abyssite",    4.4f, 0.8f, ITEM_EFFECT_ABYSSAL_FIELD     },
     [ITEM_GRIMSTEEL]   = { "Grimsteel",   3.0f, 2.5f, ITEM_EFFECT_GRIM_FORMATION    },
+
+    // ── Merged artifacts ───────────────────────────────────────────────────────────────
+    [ITEM_MERGED_1]    = { "Merged Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE },
+    [ITEM_MERGED_2]    = { "Merged Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE },
+    [ITEM_MERGED_3]    = { "Merged Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE },
+    [ITEM_MERGED_4]    = { "Merged Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE },
+    [ITEM_MERGED_5]    = { "Merged Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE },
+    [ITEM_MERGED_6]    = { "Merged Artifact", 0.0f, 0.0f, ITEM_EFFECT_NONE },
 };
 
 const ItemInfo* item_info(ItemId id)
@@ -71,6 +79,19 @@ Item item_generate(void)
     return item;
 }
 
+Item merged_item_generate(float quality)
+{
+    int variant = GetRandomValue(0, 5); // picks one of the 6 merge_cubes sprites
+    ItemId id = (ItemId)(ITEM_MERGED_BEGIN + variant);
+    Item item;
+    item.id            = id;
+    item.name          = item_info_table[id].name;
+    item.nativeQuality = 0.0f;
+    item.rarity        = 0.0f;
+    item.quality       = quality;
+    return item;
+}
+
 // ── Rendering ────────────────────────────────────────────────────────────────
 
 static Texture2D  s_atlas;
@@ -78,15 +99,21 @@ static Rectangle* s_rock_recs;
 static int        s_rock_count;
 static Rectangle* s_ore_recs;
 static int        s_ore_count;
+static Rectangle* s_merged_recs;
+static int        s_merged_count;
 
-void item_render_init(Texture2D atlas, Rectangle* rock_recs, int rock_count,
-                      Rectangle* ore_recs,  int ore_count)
+void item_render_init(Texture2D atlas,
+                      Rectangle* rock_recs,   int rock_count,
+                      Rectangle* ore_recs,    int ore_count,
+                      Rectangle* merged_recs, int merged_count)
 {
-    s_atlas      = atlas;
-    s_rock_recs  = rock_recs;
-    s_rock_count = rock_count;
-    s_ore_recs   = ore_recs;
-    s_ore_count  = ore_count;
+    s_atlas        = atlas;
+    s_rock_recs    = rock_recs;
+    s_rock_count   = rock_count;
+    s_ore_recs     = ore_recs;
+    s_ore_count    = ore_count;
+    s_merged_recs  = merged_recs;
+    s_merged_count = merged_count;
 }
 
 void item_render(const Item* item, float x, float y, float size, bool show_name)
@@ -94,7 +121,11 @@ void item_render(const Item* item, float x, float y, float size, bool show_name)
     if (!item) return;
 
     Rectangle src;
-    if (item->id < ITEM_ROCK_END) {
+    if (item->id >= ITEM_MERGED_BEGIN && item->id < ITEM_MERGED_END) {
+        int idx = item->id - ITEM_MERGED_BEGIN;
+        if (idx >= s_merged_count) return;
+        src = s_merged_recs[idx];
+    } else if (item->id < ITEM_ROCK_END) {
         int idx = item->id - ITEM_ROCK_BEGIN;
         if (idx >= s_rock_count) return;
         src = s_rock_recs[idx];

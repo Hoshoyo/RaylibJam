@@ -1,6 +1,8 @@
 #include "ui.h"
 
 #include <stdio.h>
+#define STRINGIFY_INNER(x) #x
+#define STRINGIFY(x) STRINGIFY_INNER(x)
 #include "game.h"
 #include "item.h"
 #include "font.h"
@@ -34,6 +36,16 @@ typedef struct {
 } UiTextTooltip;
 static UiTextTooltip ui_text_tooltip;
 
+// Deferred merge tooltip — shows [FINAL (BASE x MULT)] with styled segments.
+typedef struct {
+    bool  active;
+    float x, y;
+    float base_quality;
+    float multiplier;
+    float final_quality;
+} UiMergeTooltip;
+static UiMergeTooltip ui_merge_tooltip;
+
 // ── Slot / drag / drop types ─────────────────────────────────────────────────
 
 #define FACTORY_SLOT_COUNT 7
@@ -61,6 +73,10 @@ typedef struct {
 } UiDrag;
 static UiDrag ui_drag;
 
+#define ITEM_GENERATES_PER_DAY 8
+static int s_items_generated_today = 0;
+static int s_last_seen_day         = -1;
+
 // Frame-transient: reset at the top of ui_render every frame.
 typedef struct {
     bool          any_hovered;
@@ -82,6 +98,8 @@ static Texture2D tex_battery_no;
 static Texture2D tex_house;
 static Texture2D tex_sun;
 
+static Texture2D tex_moon;
+
 void ui_init() {
     ui_palette = palette_mountain_ridge;
     tex_close      = LoadTexture("res/ui/close.png");
@@ -96,22 +114,58 @@ void ui_init() {
     tex_battery_no = LoadTexture("res/ui/battery_no.png");
     tex_house      = LoadTexture("res/ui/house.png");
     tex_sun        = LoadTexture("res/ui/sun.png");
+    tex_moon       = LoadTexture("res/ui/moon.png");
 }
 
 // crafted energy — computed each frame when grid is full, -1 otherwise.
 static float s_crafted_energy = -1.0f;
+// current game pointer — set each frame in ui_render for use by tooltip rendering.
+static const Game* s_current_game = NULL;
+
+// Research merge multiplier: sqrt-based, fast early gains with diminishing returns.
+static float research_multiplier(void)
+{
+    if (!s_current_game) return 1.0f;
+    return 1.0f + sqrtf(s_current_game->research_points) / 3.0f;
+}
 
 // circle button with icon shifted up + label text at the bottom
-static HoUiInteraction ho_button_circle_icon_label(Vector2 center, float radius, Texture2D icon, const char* label, bool interactive) {
+// bg_color overrides the default palette background color.
+static HoUiInteraction ho_button_circle_icon_label(Vector2 center, float radius, Texture2D icon, const char* label, bool interactive, Color bg_color) {
     HoUiInteraction result = {0};
 
-    Color color_background = ui_palette.colors[PALETTE_DARK];
+    if (!interactive) {
+        const float border_width = 2.0f;
+        Color dis_bg     = CLITERAL(Color){ 90,  90,  90, 255 };
+        Color dis_border = CLITERAL(Color){ 60,  60,  60, 255 };
+        Color dis_icon   = CLITERAL(Color){ 255, 255, 255, 80  };
+        Color dis_text   = CLITERAL(Color){ 130, 130, 130, 255 };
+
+        DrawCircleV(center, radius + border_width, dis_border);
+        DrawCircleV(center, radius, dis_bg);
+
+        const float icon_size  = radius * 0.9f;
+        const float icon_shift = radius * 0.28f;
+        DrawTexturePro(icon,
+            (Rectangle){0, 0, icon.width, icon.height},
+            (Rectangle){center.x - icon_size*0.5f, center.y - icon_size*0.5f - icon_shift, icon_size, icon_size},
+            (Vector2){0,0}, 0.0f, dis_icon);
+
+        Font font = *font_get(FONT_SIZE_PANEL);
+        Vector2 sz = MeasureTextEx(font, label, font.baseSize, 0);
+        DrawTextEx(font, label,
+            (Vector2){center.x - floorf(sz.x*0.5f), center.y + radius*0.65f - sz.y},
+            font.baseSize, 0, dis_text);
+
+        return result;
+    }
+
+    Color color_background = bg_color;
     Color color_text       = ui_palette.colors[PALETTE_LIGHT];
-    Color color_pop        = ui_palette.colors[PALETTE_POP];
     Color color_border     = ColorBrightness(color_background, 0.1f);
     const float border_width = 2.0f;
 
-    if (interactive && CheckCollisionPointCircle(GetMousePosition(), center, radius)) {
+    if (CheckCollisionPointCircle(GetMousePosition(), center, radius)) {
         result |= HOUI_INTERACT_HOVERED;
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))  result |= HOUI_INTERACT_CLICKED;
         if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) result |= HOUI_INTERACT_RIGHT_CLICKED;
@@ -121,7 +175,6 @@ static HoUiInteraction ho_button_circle_icon_label(Vector2 center, float radius,
     DrawCircleV(center, radius + border_width, color_border);
     DrawCircleV(center, radius, hovered ? ColorBrightness(color_background, 0.3f) : color_background);
 
-    // icon: occupy upper ~55% of the circle, shifted up
     const float icon_size = radius * 0.9f;
     const float icon_shift_up = radius * 0.28f;
     Rectangle icon_dest = (Rectangle){
@@ -133,7 +186,6 @@ static HoUiInteraction ho_button_circle_icon_label(Vector2 center, float radius,
         (Rectangle){0, 0, icon.width, icon.height},
         icon_dest, (Vector2){0, 0}, 0.0f, WHITE);
 
-    // label: centered horizontally, slightly toward center of button
     Font font = *font_get(FONT_SIZE_PANEL);
     Vector2 sz = MeasureTextEx(font, label, font.baseSize, 0);
     Vector2 text_pos = (Vector2){
@@ -359,7 +411,10 @@ static void render_item_description_panel(const Item* item, float x, float y)
     DrawTextEx(*font, TextToUpper(item->name), (Vector2){tx, ty}, font->baseSize, 0, name_color);
     ty += line_h;
 
-    DrawTextEx(*font, TextFormat("QUALITY: %.2f", item->quality), (Vector2){tx, ty}, font->baseSize, 0, fg);
+    // Quality line: "QUALITY: X.XX"
+    char qual_base[32];
+    snprintf(qual_base, sizeof(qual_base), "QUALITY: %.2f", item->quality);
+    DrawTextEx(*font, qual_base, (Vector2){tx, ty}, font->baseSize, 0, fg);
     ty += line_h;
 
     // Effect description — word-wrapped, red
@@ -403,6 +458,59 @@ static void render_text_tooltip_panel(const char* text, float x, float y)
     }
 }
 
+// Draws text at pos twice (offset by 1px right) to simulate bold.
+static void draw_bold_text(Font* font, const char* text, Vector2 pos, Color color)
+{
+    DrawTextEx(*font, text, (Vector2){pos.x + 1, pos.y}, font->baseSize, 0, color);
+    DrawTextEx(*font, text, pos, font->baseSize, 0, color);
+}
+
+// Renders the styled merge tooltip: [FINAL (BASE x MULT)]
+static void render_merge_tooltip_panel(float bx, float by, float base, float mult, float final)
+{
+    Font* font      = font_get(FONT_SIZE_BODY);
+    const float pad = 8.0f;
+    const Color bg  = CLITERAL(Color){  30,  30,  30, 230 };
+    const Color brd = CLITERAL(Color){  80,  80,  80, 255 };
+    const Color fg  = CLITERAL(Color){ 220, 220, 220, 255 };
+    const Color blu = CLITERAL(Color){ 120, 190, 220, 255 };
+
+    char s_prefix[48] = "Craft a new item with greater quality (quality ";
+    char s_final[16]; snprintf(s_final, sizeof(s_final), "%.2f", final);
+    char s_mid[16]  = " (";
+    char s_base[16]; snprintf(s_base,  sizeof(s_base),  "%.2f x ", base);
+    char s_mult[16]; snprintf(s_mult,  sizeof(s_mult),  "%.2fx", mult);
+    char s_close[4] = "))";
+
+    float w_prefix = MeasureTextEx(*font, s_prefix, font->baseSize, 0).x;
+    float w_final  = MeasureTextEx(*font, s_final,  font->baseSize, 0).x + 1; // +1 for bold offset
+    float w_mid    = MeasureTextEx(*font, s_mid,    font->baseSize, 0).x;
+    float w_base   = MeasureTextEx(*font, s_base,   font->baseSize, 0).x;
+    float w_mult   = MeasureTextEx(*font, s_mult,   font->baseSize, 0).x + 1;
+    float w_close  = MeasureTextEx(*font, s_close,  font->baseSize, 0).x;
+
+    float total_w = w_prefix + w_final + w_mid + w_base + w_mult + w_close;
+    float panel_w = total_w + pad * 2.0f;
+    float panel_h = font->baseSize + pad * 2.0f;
+
+    float rx = bx + 12.0f, ry = by + 4.0f;
+    if (rx + panel_w > WINDOW_WIDTH)  rx = WINDOW_WIDTH - panel_w - 4.0f;
+    if (ry + panel_h > WINDOW_HEIGHT) ry = by - panel_h - 8.0f;
+
+    DrawRectangle((int)rx, (int)ry, (int)panel_w, (int)panel_h, bg);
+    DrawRectangleLinesEx((Rectangle){rx, ry, panel_w, panel_h}, 1.0f, brd);
+
+    float cx = rx + pad;
+    float cy = ry + pad;
+
+    DrawTextEx(*font, s_prefix, (Vector2){cx, cy}, font->baseSize, 0, fg); cx += w_prefix;
+    draw_bold_text(font, s_final, (Vector2){cx, cy}, fg);                   cx += w_final;
+    DrawTextEx(*font, s_mid,    (Vector2){cx, cy}, font->baseSize, 0, fg); cx += w_mid;
+    DrawTextEx(*font, s_base,   (Vector2){cx, cy}, font->baseSize, 0, fg); cx += w_base;
+    draw_bold_text(font, s_mult, (Vector2){cx, cy}, blu);                   cx += w_mult;
+    DrawTextEx(*font, s_close,  (Vector2){cx, cy}, font->baseSize, 0, fg);
+}
+
 static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
     const float window_x0 = 30.0f;
     const float window_x1 = WINDOW_WIDTH - 30.0f;
@@ -435,10 +543,23 @@ static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
     const float center_y  = content_y + floorf(content_height * 0.5f);
 
     // new item button — generates a random item into the popper slot
-    if (ho_button_circle_texture((Vector2){content_x + btn_radius, center_y}, btn_radius, tex_new) & HOUI_INTERACT_CLICKED)
+    bool can_generate = s_items_generated_today < ITEM_GENERATES_PER_DAY
+                        && !state->has_item[SLOT_POPPER];
+    Vector2 new_btn_center = (Vector2){content_x + btn_radius, center_y};
+    HoUiInteraction new_btn_result = can_generate
+        ? ho_button_circle_texture(new_btn_center, btn_radius, tex_new)
+        : ho_button_circle_texture_disabled(new_btn_center, btn_radius, tex_new);
+    if (new_btn_result & HOUI_INTERACT_HOVERED) {
+        static char tooltip_buf[48];
+        snprintf(tooltip_buf, sizeof(tooltip_buf), "%d/%d remaining daily uses",
+            ITEM_GENERATES_PER_DAY - s_items_generated_today, ITEM_GENERATES_PER_DAY);
+        ui_text_tooltip = (UiTextTooltip){ true, tooltip_buf, GetMousePosition().x, GetMousePosition().y };
+    }
+    if (can_generate && (new_btn_result & HOUI_INTERACT_CLICKED))
     {
         state->items[SLOT_POPPER]    = item_generate();
         state->has_item[SLOT_POPPER] = true;
+        s_items_generated_today++;
     }
 
     // large slot
@@ -463,7 +584,7 @@ static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
     return start_y + panel_height;
 }
 
-static float render_item_crafter_panel(float start_y, FactoryMenuState* state) {
+static float render_item_crafter_panel(float start_y, FactoryMenuState* state, Game* game) {
     const float window_x0 = 30.0f;
     const float window_x1 = WINDOW_WIDTH - 30.0f;
     const float panel_padding = 14.0f;
@@ -549,11 +670,14 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state) {
         HoUiInteraction inter = ho_button_icon_label(
             (Rectangle){btns_x, btns_y, action_btn_width, action_btn_height},
             tex_energy, icon_size, body_font, "GENERATE ENERGY", (Color){160,120,20,255}, grid_full);
-        if (inter & HOUI_INTERACT_CLICKED)
-            TraceLog(LOG_INFO, "Grid quality: %.4f", s_crafted_energy);
+        if (inter & HOUI_INTERACT_CLICKED) {
+            game->stored_energy += s_crafted_energy;
+            for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
+                state->has_item[i] = false;
+        }
         if (inter & HOUI_INTERACT_HOVERED) {
             Vector2 cur = GetMousePosition();
-            ui_text_tooltip = (UiTextTooltip){ true, "Energize the city", cur.x + 12.0f, cur.y + 4.0f };
+            ui_text_tooltip = (UiTextTooltip){ true, "Energize the city", cur.x, cur.y };
         }
     }
     // Send to Research (light blue)
@@ -561,9 +685,14 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state) {
         HoUiInteraction inter = ho_button_icon_label(
             (Rectangle){btns_x + action_btn_width + action_btn_gap, btns_y, action_btn_width, action_btn_height},
             tex_research, icon_size, body_font, "SEND TO RESEARCH", (Color){60,130,170,255}, grid_full);
+        if (inter & HOUI_INTERACT_CLICKED) {
+            game->research_points += s_crafted_energy;
+            for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
+                state->has_item[i] = false;
+        }
         if (inter & HOUI_INTERACT_HOVERED) {
             Vector2 cur = GetMousePosition();
-            ui_text_tooltip = (UiTextTooltip){ true, "Energize the research facility to get better quality items", cur.x + 12.0f, cur.y + 4.0f };
+            ui_text_tooltip = (UiTextTooltip){ true, "Energize the research facility for a stronger merge multiplier", cur.x, cur.y };
         }
     }
     // Merge (dark red)
@@ -571,16 +700,26 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state) {
         HoUiInteraction inter = ho_button_icon_label(
             (Rectangle){btns_x + (action_btn_width + action_btn_gap) * 2.0f, btns_y, action_btn_width, action_btn_height},
             tex_merge, icon_size, body_font, "MERGE", (Color){140,30,30,255}, grid_full);
-        if (inter & HOUI_INTERACT_HOVERED) {
-            Vector2 cur = GetMousePosition();
-            ui_text_tooltip = (UiTextTooltip){ true, "Merge into item of equivalent quality", cur.x + 12.0f, cur.y + 4.0f };
+        if (inter & HOUI_INTERACT_CLICKED) {
+            float mult = research_multiplier();
+            Item merged = merged_item_generate(s_crafted_energy * mult);
+            state->items[SLOT_POPPER]    = merged;
+            state->has_item[SLOT_POPPER] = true;
+            for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
+                state->has_item[i] = false;
+        }
+        if (inter & HOUI_INTERACT_HOVERED && grid_full) {
+            float mult   = research_multiplier();
+            float final  = s_crafted_energy * mult;
+            ui_merge_tooltip = (UiMergeTooltip){ true, GetMousePosition().x, GetMousePosition().y,
+                                                  s_crafted_energy, mult, final };
         }
     }
 
     return start_y + panel_height;
 }
 
-static void render_factory_menu(bool* open) {
+static void render_factory_menu(bool* open, Game* game) {
     // compute total window height from panel sizes before drawing anything
     const float btn_size = 24.0f;
     const float btn_margin = 6.0f;
@@ -614,7 +753,7 @@ static void render_factory_menu(bool* open) {
         // draw panels (no gaps)
         float y = FACTORY_MENU_Y0 + topbar_height;
         y = render_item_popper_panel(y, &factory_state);
-        render_item_crafter_panel(y, &factory_state);
+        render_item_crafter_panel(y, &factory_state, game);
 
         // draw topbar and outline on top
         render_factory_menu_base_end(open, window_height);
@@ -649,33 +788,48 @@ static float render_stat_icon(Texture2D icon, Color tint, const char* value_str,
     Rectangle hover_rect = (Rectangle){ix, y, item_w, icon_size};
     if (CheckCollisionPointRec(GetMousePosition(), hover_rect)) {
         Vector2 cur = GetMousePosition();
-        ui_text_tooltip = (UiTextTooltip){ true, tooltip_text, cur.x + 12.0f, cur.y + 4.0f };
+        ui_text_tooltip = (UiTextTooltip){ true, tooltip_text, cur.x, cur.y };
     }
 
     return ix - spacing;
 }
 
-static void render_home_ui(const Game* game, bool* factory_menu_open)
+static void render_home_ui(Game* game, bool* factory_menu_open)
 {
     // ── Bottom action buttons ─────────────────────────────────────────────────
     const float btn_radius = 36.0f;
     const float btn_margin = 14.0f;
     const float btn_y = WINDOW_HEIGHT - btn_radius - btn_margin;
 
-    // Three buttons right-to-left: Research, Factory, Power City
-    const float research_x   = WINDOW_WIDTH - btn_radius - btn_margin;
-    const float factory_x    = research_x  - btn_radius * 2.0f - btn_margin;
-    const float power_city_x = factory_x   - btn_radius * 2.0f - btn_margin;
+    // Three buttons right-to-left: Next Day, Power City, Factory
+    const float next_day_x   = WINDOW_WIDTH - btn_radius - btn_margin;
+    const float power_city_x = next_day_x   - btn_radius * 2.0f - btn_margin;
+    const float factory_x    = power_city_x - btn_radius * 2.0f - btn_margin;
 
-    // research button (placeholder)
-    ho_button_circle_icon_label((Vector2){research_x, btn_y}, btn_radius, tex_research, "RESEARCH", true);
+    const Color factory_color    = CLITERAL(Color){ 140, 30,  30,  255 };
+    const Color power_city_color = CLITERAL(Color){ 160, 120, 20,  255 };
+    const Color next_day_color   = ui_palette.colors[PALETTE_DARK];
 
     // factory button — opens factory menu
-    if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "FACTORY", !(*factory_menu_open)) & HOUI_INTERACT_CLICKED)
+    if (ho_button_circle_icon_label((Vector2){factory_x, btn_y}, btn_radius, tex_factory, "FACTORY", !(*factory_menu_open), factory_color) & HOUI_INTERACT_CLICKED)
         *factory_menu_open = true;
 
-    // power city button (placeholder)
-    ho_button_circle_icon_label((Vector2){power_city_x, btn_y}, btn_radius, tex_flash, "POWER CITY", true);
+    // power city button — enabled only when stored >= needed and there is a requirement
+    bool can_power = game->needed_energy > 0.0f && game->stored_energy >= game->needed_energy;
+    if (ho_button_circle_icon_label((Vector2){power_city_x, btn_y}, btn_radius, tex_flash, "POWER CITY", can_power, power_city_color) & HOUI_INTERACT_CLICKED) {
+        game->stored_energy -= game->needed_energy;
+        game->needed_energy  = 0.0f;
+        for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+            int r = i / CITY_GRID, c = i % CITY_GRID;
+            game->city[r][c].needed_energy = 0.0f;
+        }
+    }
+
+    // next day button — disabled while there is still energy required
+    bool next_day_enabled = game->needed_energy <= 0.0f;
+    if (ho_button_circle_icon_label((Vector2){next_day_x, btn_y}, btn_radius, tex_moon, "NEXT DAY", next_day_enabled, next_day_color) & HOUI_INTERACT_CLICKED) {
+        game_next_day();
+    }
 
     // ── Top-right status bar ──────────────────────────────────────────────────
     const float stat_icon_size = 24.0f;
@@ -724,7 +878,7 @@ static void render_home_ui(const Game* game, bool* factory_menu_open)
         sx, stat_y, stat_icon_size, "City size");
     sx = render_stat_icon(tex_research,   CLITERAL(Color){120, 190, 220, 255},
         str_research,
-        sx, stat_y, stat_icon_size, "Research points");
+        sx, stat_y, stat_icon_size, TextFormat("x%.2f merge multiplier from research", research_multiplier()));
     sx = render_stat_icon(tex_battery_no, CLITERAL(Color){220, 100, 100, 255},
         str_needed,
         sx, stat_y, stat_icon_size, "City needed energy");
@@ -739,16 +893,24 @@ bool ui_render(const Game* game)
     static bool factory_menu_open = false;
     bool capturing = factory_menu_open || ui_drag.active;
 
+    s_current_game  = game;
+    // reset daily item-gen counter when the day advances
+    if (game->day != s_last_seen_day) {
+        s_items_generated_today = 0;
+        s_last_seen_day = game->day;
+    }
+
     // reset frame-transient drop target and text tooltip
     ui_drop_target   = (UiDropTarget){0};
     ui_text_tooltip  = (UiTextTooltip){0};
+    ui_merge_tooltip = (UiMergeTooltip){0};
 
     // ── Home UI (always visible) ─────────────────────────────────────────────
-    render_home_ui(game, &factory_menu_open);
+    render_home_ui((Game*)game, &factory_menu_open);
 
     // ── Module: Factory Menu ─────────────────────────────────────────────────
     if (factory_menu_open) {
-        render_factory_menu(&factory_menu_open);
+        render_factory_menu(&factory_menu_open, (Game*)game);
     }
 
     // drop resolution — after all slots have registered their hover state
@@ -799,8 +961,16 @@ bool ui_render(const Game* game)
     // flush deferred text tooltip (item tooltip takes priority)
     if (!ui_tooltip.active && ui_text_tooltip.active)
     {
-        render_text_tooltip_panel(ui_text_tooltip.text, ui_text_tooltip.x, ui_text_tooltip.y);
+        render_text_tooltip_panel(ui_text_tooltip.text, ui_text_tooltip.x + 12.0f, ui_text_tooltip.y + 4.0f);
         ui_text_tooltip.active = false;
+    }
+
+    // flush deferred merge tooltip (lowest priority)
+    if (!ui_tooltip.active && !ui_text_tooltip.active && ui_merge_tooltip.active)
+    {
+        render_merge_tooltip_panel(ui_merge_tooltip.x, ui_merge_tooltip.y,
+            ui_merge_tooltip.base_quality, ui_merge_tooltip.multiplier, ui_merge_tooltip.final_quality);
+        ui_merge_tooltip.active = false;
     }
 
     return capturing;
