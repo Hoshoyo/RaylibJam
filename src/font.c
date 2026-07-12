@@ -6,6 +6,7 @@ static const int font_pixel_sizes[FONT_SIZE_COUNT] = {
     [FONT_SIZE_TITLE] = 20,
     [FONT_SIZE_PANEL] = 16,
     [FONT_SIZE_BODY]  = 12,
+    [FONT_SIZE_LARGE] = 48,
 };
 
 static Font fonts[FONT_SIZE_COUNT];

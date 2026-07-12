@@ -213,7 +213,7 @@ ho_combo_box(Vector2 position, bool active, Vector2 size, Font font, const char*
     Color color_background = ui_palette.colors[PALETTE_DARK];
 
     size.x -= 30.0f;
-    HoUiInteraction result = ho_button(position, size, font, options[*selected_index]);
+    ho_button(position, size, font, options[*selected_index]);
 
     Vector2 arrow_pos = position;
     arrow_pos.x += size.x;

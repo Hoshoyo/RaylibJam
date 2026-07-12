@@ -11,8 +11,6 @@ ho_label(Vector2 position, Vector2 size, Font font, const char* text)
     Color color_text = ui_palette.colors[PALETTE_LIGHT];
     Color color_pop = ui_palette.colors[PALETTE_POP];
 
-    Vector2 border_size = (Vector2){2.0f, 2.0f};
-
     if(CheckCollisionPointRec(GetMousePosition(), clipping))
     {
         result |= HOUI_INTERACT_HOVERED;

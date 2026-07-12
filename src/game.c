@@ -3,6 +3,7 @@
 #include "renderer/assets.h"
 
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "ui.h"
 #include "item.h"
@@ -161,22 +162,6 @@ void game_update()
     game.camera.target.y = (float)round(game.camera.target.y);
 }
 
-//void debug_slider(int id, float* value, float min, float max)
-//{
-//    if(id < 0 || id > 256) return;
-//
-//    static bool debug_sliders[256];
-//    HoUiInteraction interaction = ho_slider_circle((Vector2){10.0f, 10.0f + id * 50.0f}, debug_sliders[id], (Vector2){180, 2}, value, min, max);
-//    if(interaction & HOUI_INTERACT_CLICKED)
-//        debug_sliders[id] = true;
-//    if(interaction & HOUI_INTERACT_RELEASED)
-//        debug_sliders[id] = false;
-//    *value = roundf(*value);
-//    DrawText(TextFormat("%.2f", *value), 195, id * 50, 20, WHITE);
-//
-//    ui_hovered_or_active = (interaction & HOUI_INTERACT_HOVERED) != 0 || debug_sliders[id];
-//}
-
 Vector2 iso_pos(Vector2 ortho)
 {
     return (Vector2){(ortho.x + ortho.y), (ortho.x - ortho.y)};
@@ -186,7 +171,7 @@ void render_map()
 {
     #define GRID_SIZE 180
     #if 1
-    SetRandomSeed(456);  // deterministic map geometry every frame
+    SetRandomSeed(456);
     for(int y = 8; y > -8; --y)
     {
         for(int x = -8; x < 8; ++x)
@@ -198,12 +183,40 @@ void render_map()
             Vector2 position = (Vector2){x * GRID_SIZE, y * GRID_SIZE};
             position = iso_pos(position);
             int random_pole = GetRandomValue(0, pole_sprite.rect_count - 1);
+            int random_building = GetRandomValue(0, pole_sprite.rect_count - 1);
 
             if (cb->filled) {
-                render_sprite_static_atlas_offset(&buildings_shadow.atlas, building_recs[cb->render_ref], building_offsets[cb->render_ref], position, 0, WHITE);
-                render_sprite_static_atlas_offset(&buildings_albedo.atlas, building_recs[cb->render_ref], building_offsets[cb->render_ref], position, 0, WHITE);
+                render_sprite_static_atlas_offset(&buildings_shadow.atlas, building_recs[random_building], building_offsets[random_building], position, 0, WHITE);
+                render_sprite_static_atlas_offset(&buildings_albedo.atlas, building_recs[random_building], building_offsets[random_building], position, 0, WHITE);
                 Vector2 pole_position = Vector2Add(position, (Vector2){30, 50});
                 render_sprite_static_atlas_offset(&pole_sprite.atlas, pole_sprite.recs[random_pole], pole_offsets[random_pole], pole_position, 0, WHITE);
+            }
+            if(GetRandomValue(0, 100) < 70)
+            {
+                int random_tree = GetRandomValue(0, trees_sprite.rect_count - 1);
+                int random_spread = GetRandomValue(-80, 80);
+                Vector2 tree_position = Vector2Add(position, (Vector2){random_spread, 20});
+                render_sprite_static_atlas(&trees_sprite.atlas, trees_sprite.recs[random_tree], tree_position, 0, WHITE);
+            }
+
+            // Power-out icon: only on filled buildings that still need energy
+            if (cb->filled && cb->needed_energy > 0.0f)
+            {
+                const float icon_size = 64.0f;
+                Vector2 icon_pos = Vector2Add(position, (Vector2){-icon_size * 0.5f, -130.0f});
+                Rectangle src = power_icons_recs[0];
+                Rectangle dst = (Rectangle){icon_pos.x, icon_pos.y, icon_size, icon_size};
+                DrawTexturePro(power_icons.atlas.texture, src, dst, (Vector2){0,0}, 0, WHITE);
+
+                Font font = *font_get(FONT_SIZE_LARGE);
+                char energy_str[16];
+                snprintf(energy_str, sizeof(energy_str), "%.1f", cb->needed_energy);
+                Vector2 tsz = MeasureTextEx(font, energy_str, font.baseSize, 0);
+                Vector2 text_pos = (Vector2){
+                    icon_pos.x + (icon_size - tsz.x) * 0.5f,
+                    icon_pos.y + icon_size + 2.0f
+                };
+                DrawTextEx(font, energy_str, text_pos, font.baseSize, 0, WHITE);
             }
         }
     }

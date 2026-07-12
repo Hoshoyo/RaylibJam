@@ -6,6 +6,7 @@ typedef enum {
     FONT_SIZE_TITLE = 0,  // 20px — window titles, headers
     FONT_SIZE_PANEL,      // 16px — panel labels, buttons
     FONT_SIZE_BODY,       // 12px — small labels, item names
+    FONT_SIZE_LARGE,      // 48px — world-space labels (avoids upscale pixelation)
     FONT_SIZE_COUNT,
 } FontSize;
 
