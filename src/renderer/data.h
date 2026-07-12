@@ -128,7 +128,7 @@ static AssetAtlas power_icons = { {"res/icons/power1.png", false, {0}, {0}, {1.0
 
 static AssetAtlas road  = { {"res/building/road.png", false, {0}, {0}, {1.0f, 1.0f}, 1.0f, 1, {0}}, 0, 0};
 
-static AssetAtlas powerplant  = { {"res/building/powerplant.png", false, {0}, {0}, {1.0f, 1.0f}, 1.0f, 1, {0}}, 0, 0};
+static AssetAtlas powerplant  = { {"res/building/Powerplant.png", false, {0}, {0}, {1.0f, 1.0f}, 1.0f, 1, {0}}, 0, 0};
 
 /*
   const char* path;
