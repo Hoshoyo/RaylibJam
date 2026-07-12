@@ -109,7 +109,6 @@ void render_map()
     #define GRID_SIZE 180
     #if 1
     SetRandomSeed(456);
-    int j = 0;
     for(int y = 8; y > -8; --y)
     {
         for(int x = -8; x < 8; ++x)
