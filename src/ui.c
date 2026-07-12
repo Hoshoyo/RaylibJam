@@ -41,16 +41,6 @@ typedef struct {
 } UiTextTooltip;
 static UiTextTooltip ui_text_tooltip;
 
-// Deferred merge tooltip — shows [FINAL (BASE x MULT)] with styled segments.
-typedef struct {
-    bool  active;
-    float x, y;
-    float base_energy;
-    float multiplier;
-    float final_energy;
-} UiMergeTooltip;
-static UiMergeTooltip ui_merge_tooltip;
-
 // ── Slot / drag / drop types ─────────────────────────────────────────────────
 
 #define FACTORY_SLOT_COUNT 7
@@ -98,7 +88,6 @@ static Texture2D tex_trash;
 static Texture2D tex_factory;
 static Texture2D tex_research;
 static Texture2D tex_energy;
-static Texture2D tex_merge;
 static Texture2D tex_flash;
 static Texture2D tex_battery_no;
 static Texture2D tex_house;
@@ -116,7 +105,6 @@ void ui_init() {
     tex_factory    = LoadTexture("res/ui/factory.png");
     tex_research   = LoadTexture("res/ui/research.png");
     tex_energy     = LoadTexture("res/ui/battery.png");
-    tex_merge      = LoadTexture("res/ui/merge.png");
     tex_flash      = LoadTexture("res/ui/flash.png");
     tex_battery_no = LoadTexture("res/ui/battery_no.png");
     tex_house      = LoadTexture("res/ui/house.png");
@@ -503,59 +491,6 @@ static void render_text_tooltip_panel(const char* text, float x, float y)
     }
 }
 
-// Draws text at pos twice (offset by 1px right) to simulate bold.
-static void draw_bold_text(Font* font, const char* text, Vector2 pos, Color color)
-{
-    DrawTextEx(*font, text, (Vector2){pos.x + 1, pos.y}, font->baseSize, 0, color);
-    DrawTextEx(*font, text, pos, font->baseSize, 0, color);
-}
-
-// Renders the styled merge tooltip: [FINAL (BASE x MULT)]
-static void render_merge_tooltip_panel(float bx, float by, float base, float mult, float final)
-{
-    Font* font      = font_get(FONT_SIZE_BODY);
-    const float pad = 8.0f;
-    const Color bg  = CLITERAL(Color){  30,  30,  30, 230 };
-    const Color brd = CLITERAL(Color){  80,  80,  80, 255 };
-    const Color fg  = CLITERAL(Color){ 220, 220, 220, 255 };
-    const Color blu = CLITERAL(Color){ 120, 190, 220, 255 };
-
-    char s_prefix[48] = "Craft a new item with greater energy (energy ";
-    char s_final[16]; snprintf(s_final, sizeof(s_final), "%.2f", final);
-    char s_mid[16]  = " (";
-    char s_base[16]; snprintf(s_base,  sizeof(s_base),  "%.2f x ", base);
-    char s_mult[16]; snprintf(s_mult,  sizeof(s_mult),  "%.2fx", mult);
-    char s_close[4] = "))";
-
-    float w_prefix = MeasureTextEx(*font, s_prefix, font->baseSize, 0).x;
-    float w_final  = MeasureTextEx(*font, s_final,  font->baseSize, 0).x + 1; // +1 for bold offset
-    float w_mid    = MeasureTextEx(*font, s_mid,    font->baseSize, 0).x;
-    float w_base   = MeasureTextEx(*font, s_base,   font->baseSize, 0).x;
-    float w_mult   = MeasureTextEx(*font, s_mult,   font->baseSize, 0).x + 1;
-    float w_close  = MeasureTextEx(*font, s_close,  font->baseSize, 0).x;
-
-    float total_w = w_prefix + w_final + w_mid + w_base + w_mult + w_close;
-    float panel_w = total_w + pad * 2.0f;
-    float panel_h = font->baseSize + pad * 2.0f;
-
-    float rx = bx + 12.0f, ry = by + 4.0f;
-    if (rx + panel_w > WINDOW_WIDTH)  rx = WINDOW_WIDTH - panel_w - 4.0f;
-    if (ry + panel_h > WINDOW_HEIGHT) ry = by - panel_h - 8.0f;
-
-    DrawRectangle((int)rx, (int)ry, (int)panel_w, (int)panel_h, bg);
-    DrawRectangleLinesEx((Rectangle){rx, ry, panel_w, panel_h}, 1.0f, brd);
-
-    float cx = rx + pad;
-    float cy = ry + pad;
-
-    DrawTextEx(*font, s_prefix, (Vector2){cx, cy}, font->baseSize, 0, fg); cx += w_prefix;
-    draw_bold_text(font, s_final, (Vector2){cx, cy}, fg);                   cx += w_final;
-    DrawTextEx(*font, s_mid,    (Vector2){cx, cy}, font->baseSize, 0, fg); cx += w_mid;
-    DrawTextEx(*font, s_base,   (Vector2){cx, cy}, font->baseSize, 0, fg); cx += w_base;
-    draw_bold_text(font, s_mult, (Vector2){cx, cy}, blu);                   cx += w_mult;
-    DrawTextEx(*font, s_close,  (Vector2){cx, cy}, font->baseSize, 0, fg);
-}
-
 static float render_item_popper_panel(float start_y, FactoryMenuState* state) {
     // Auto-populate: if slot is empty, no drag in progress from it, and uses remain, fill it.
     if (!state->has_item[SLOT_POPPER]
@@ -733,16 +668,16 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
     // bottom action buttons centered
     const float action_btn_width = 130.0f;
     const float action_btn_gap = 10.0f;
-    const float btns_total_width = action_btn_width * 3.0f + action_btn_gap * 2.0f;
+    const float btns_total_width = action_btn_width * 2.0f + action_btn_gap * 1.0f;
     const float btns_x = panel_x + floorf((panel_width - btns_total_width) * 0.5f);
     const float btns_y = start_y + panel_height - panel_padding - action_btn_height;
     const float icon_size = 26.0f;
 
-    // Generate Energy (dark yellow)
+    // Merge (dark yellow) — energizes the city
     {
         HoUiInteraction inter = ho_button_icon_label(
             (Rectangle){btns_x, btns_y, action_btn_width, action_btn_height},
-            tex_energy, icon_size, body_font, "GENERATE ENERGY", (Color){160,120,20,255}, grid_full);
+            tex_energy, icon_size, body_font, "MERGE", (Color){160,120,20,255}, grid_full);
         if (inter & HOUI_INTERACT_CLICKED) {
             game->stored_energy += s_crafted_energy;
             for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
@@ -769,26 +704,6 @@ static float render_item_crafter_panel(float start_y, FactoryMenuState* state, G
         if (inter & HOUI_INTERACT_HOVERED) {
             Vector2 cur = GetMousePosition();
             ui_text_tooltip = (UiTextTooltip){ true, "Energize the research facility for a stronger merge multiplier", cur.x, cur.y };
-        }
-    }
-    // Merge (dark red)
-    {
-        HoUiInteraction inter = ho_button_icon_label(
-            (Rectangle){btns_x + (action_btn_width + action_btn_gap) * 2.0f, btns_y, action_btn_width, action_btn_height},
-            tex_merge, icon_size, body_font, "MERGE", (Color){140,30,30,255}, grid_full);
-        if (inter & HOUI_INTERACT_CLICKED) {
-            float mult = research_multiplier();
-            Item merged = merged_item_generate(s_crafted_energy * mult);
-            state->items[SLOT_POPPER]    = merged;
-            state->has_item[SLOT_POPPER] = true;
-            for (int i = SLOT_CRAFTER_0; i <= SLOT_CRAFTER_5; ++i)
-                state->has_item[i] = false;
-        }
-        if (inter & HOUI_INTERACT_HOVERED && grid_full) {
-            float mult   = research_multiplier();
-            float final  = s_crafted_energy * mult;
-            ui_merge_tooltip = (UiMergeTooltip){ true, GetMousePosition().x, GetMousePosition().y,
-                                                  s_crafted_energy, mult, final };
         }
     }
 
@@ -891,20 +806,70 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
         play_random_pitch(sounds.click, 0.1f);
     }
 
-    // next day button — enabled only when stored >= needed (or no requirement yet)
-    bool next_day_enabled = game->needed_energy <= 0.0f
-                            || game->stored_energy >= game->needed_energy;
-    if (ho_button_circle_icon_label((Vector2){next_day_x, btn_y}, btn_radius, tex_moon, "NEXT DAY", next_day_enabled, next_day_color, game->animation_timer) & HOUI_INTERACT_CLICKED) {
-        if (game->needed_energy > 0.0f) {
-            game->stored_energy -= game->needed_energy;
-            game->needed_energy  = 0.0f;
-            for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
-                int r = i / CITY_GRID, c = i % CITY_GRID;
-                game->city[r][c].needed_energy = 0.0f;
+    // next day button — always enabled; distributes stored energy to houses on click
+    if (ho_button_circle_icon_label((Vector2){next_day_x, btn_y}, btn_radius, tex_moon, "NEXT DAY", true, next_day_color, game->animation_timer) & HOUI_INTERACT_CLICKED) {
+        // Collect indices of filled buildings with positive energy demand (center-out order).
+        int indices[CITY_GRID * CITY_GRID];
+        int count = 0;
+        for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+            int idx = city_fill_order(i);
+            int r = idx / CITY_GRID, c = idx % CITY_GRID;
+            if (game->city[r][c].filled && game->city[r][c].needed_energy > 0.0f)
+                indices[count++] = idx;
+        }
+        // Insertion sort by needed_energy ascending — pay cheapest houses first
+        for (int a = 1; a < count; a++) {
+            int key = indices[a];
+            float key_e = game->city[key / CITY_GRID][key % CITY_GRID].needed_energy;
+            int b = a - 1;
+            while (b >= 0) {
+                float e = game->city[indices[b] / CITY_GRID][indices[b] % CITY_GRID].needed_energy;
+                if (e <= key_e) break;
+                indices[b + 1] = indices[b];
+                b--;
+            }
+            indices[b + 1] = key;
+        }
+        // Distribute stored energy
+        for (int k = 0; k < count; k++) {
+            int r = indices[k] / CITY_GRID, c = indices[k] % CITY_GRID;
+            City_Building* b = &game->city[r][c];
+            if (game->stored_energy >= b->needed_energy) {
+                game->stored_energy -= b->needed_energy;
+                b->needed_energy = 0.0f;
+                b->days_without_energy = 0;
+            } else {
+                // Partial payment: drain whatever remains into this house's need
+                if (game->stored_energy > 0.0f) {
+                    b->needed_energy -= game->stored_energy;
+                    game->stored_energy = 0.0f;
+                }
+                b->days_without_energy++;
+            }
+        }
+        // Determine if any building went unmet this turn, and remove those stuck for 2+ days.
+        // At most MAXIMUM_BUILDINGS_TO_BE_REMOVED evictions per day.
+        #define MAXIMUM_BUILDINGS_TO_BE_REMOVED 2
+        bool any_unmet = false;
+        int removed = 0;
+        for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+            int idx = city_evict_order(i);
+            int r = idx / CITY_GRID, c = idx % CITY_GRID;
+            City_Building* b = &game->city[r][c];
+            if (!b->filled) continue;
+            if (b->days_without_energy > 0) {
+                any_unmet = true;
+                if (b->days_without_energy >= 2 && removed < MAXIMUM_BUILDINGS_TO_BE_REMOVED) {
+                    b->filled = false;
+                    b->needed_energy = 0.0f;
+                    b->days_without_energy = 0;
+                    game->city_size--;
+                    removed++;
+                }
             }
         }
         play_random_pitch(sounds.click, 0.1f);
-        game_next_day();
+        game_next_day(!any_unmet);
     }
 
     // ── Top-right status bar ──────────────────────────────────────────────────
@@ -979,7 +944,6 @@ bool ui_render(const Game* game)
     // reset frame-transient drop target and text tooltip
     ui_drop_target   = (UiDropTarget){0};
     ui_text_tooltip  = (UiTextTooltip){0};
-    ui_merge_tooltip = (UiMergeTooltip){0};
 
     // ── Home UI (always visible) ─────────────────────────────────────────────
     render_home_ui((Game*)game, &factory_menu_open);
@@ -1055,14 +1019,6 @@ bool ui_render(const Game* game)
     {
         render_text_tooltip_panel(ui_text_tooltip.text, ui_text_tooltip.x + 12.0f, ui_text_tooltip.y + 4.0f);
         ui_text_tooltip.active = false;
-    }
-
-    // flush deferred merge tooltip (lowest priority)
-    if (!ui_tooltip.active && !ui_text_tooltip.active && ui_merge_tooltip.active)
-    {
-        render_merge_tooltip_panel(ui_merge_tooltip.x, ui_merge_tooltip.y,
-            ui_merge_tooltip.base_energy, ui_merge_tooltip.multiplier, ui_merge_tooltip.final_energy);
-        ui_merge_tooltip.active = false;
     }
 
     return capturing;

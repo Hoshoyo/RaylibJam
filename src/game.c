@@ -15,7 +15,7 @@ static Vector2 camera_position;
 
 static Vector2 iso_pos(Vector2 ortho);
 
-static int s_fill_order[CITY_GRID * CITY_GRID];
+int s_fill_order[CITY_GRID * CITY_GRID];
 
 static int fill_order_cmp(const void* a, const void* b)
 {
@@ -39,23 +39,52 @@ void city_init(int building_count)
 
 void resize_city(int new_size)
 {
+    // Count currently filled buildings.
+    int current_filled = 0;
     for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
         int idx = s_fill_order[i];
-        game.city[idx / CITY_GRID][idx % CITY_GRID].filled = (i < new_size);
+        if (game.city[idx / CITY_GRID][idx % CITY_GRID].filled)
+            current_filled++;
+    }
+
+    if (new_size > current_filled) {
+        // Fill gaps in fill order (closest to center first) until we reach the target.
+        int to_add = new_size - current_filled;
+        for (int i = 0; i < CITY_GRID * CITY_GRID && to_add > 0; i++) {
+            int idx = s_fill_order[i];
+            City_Building* b = &game.city[idx / CITY_GRID][idx % CITY_GRID];
+            if (!b->filled) {
+                b->filled = true;
+                to_add--;
+            }
+        }
+    } else if (new_size < current_filled) {
+        // Remove buildings from the end of fill order (outermost first).
+        int to_remove = current_filled - new_size;
+        for (int i = CITY_GRID * CITY_GRID - 1; i >= 0 && to_remove > 0; i--) {
+            int idx = s_fill_order[i];
+            City_Building* b = &game.city[idx / CITY_GRID][idx % CITY_GRID];
+            if (b->filled) {
+                b->filled = false;
+                to_remove--;
+            }
+        }
     }
 }
 
 // Base energy demand increase per building per day (tweak this).
 #define ENERGY_PER_HOUSE_BASE 1.5f
 
-void game_next_day()
+void game_next_day(bool allow_growth)
 {
-    // Grow city by 1-3 new buildings.
-    int new_houses = GetRandomValue(1, 3);
-    game.city_size += new_houses;
-    if (game.city_size > CITY_GRID * CITY_GRID)
-        game.city_size = CITY_GRID * CITY_GRID;
-    resize_city(game.city_size);
+    if (allow_growth) {
+        // Grow city by 1-3 new buildings.
+        int new_houses = GetRandomValue(1, 3);
+        game.city_size += new_houses;
+        if (game.city_size > CITY_GRID * CITY_GRID)
+            game.city_size = CITY_GRID * CITY_GRID;
+        resize_city(game.city_size);
+    }
 
     // Increase each existing building's energy demand.
     // Formula: base * day_scale * random_factor
@@ -210,8 +239,8 @@ void render_map()
                 render_sprite_static_atlas(&trees_sprite.atlas, trees_sprite.recs[random_tree], tree_position, 1, WHITE);
             }
 
-            // Power-out icon: only on filled buildings that still need energy
-            if (cb->filled && cb->needed_energy > 0.0f)
+            // Power-out icon: only on filled buildings that did not get energy last day
+            if (cb->filled && cb->days_without_energy > 0)
             {
                 const float icon_size = 64.0f;
                 Vector2 icon_pos = Vector2Add(position, (Vector2){-icon_size * 0.5f, -130.0f});

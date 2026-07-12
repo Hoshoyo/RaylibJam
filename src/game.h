@@ -11,6 +11,7 @@ typedef struct {
     bool  filled;
     float needed_energy;
     int   render_ref;
+    int   days_without_energy;
 } City_Building;
 
 typedef struct {
@@ -30,7 +31,14 @@ void SaveGame(const char* data);
 
 void city_init(int building_count);
 void resize_city(int new_size);
-void game_next_day(void);
+void game_next_day(bool allow_growth);
+
+// Shared fill order: s_fill_order[0] = innermost building slot, [N-1] = outermost.
+extern int s_fill_order[CITY_GRID * CITY_GRID];
+// Center-out (same order resize_city uses when adding buildings).
+static inline int city_fill_order(int i)  { return s_fill_order[i]; }
+// Outer-in (reverse: prefer evicting buildings added latest).
+static inline int city_evict_order(int i) { return s_fill_order[CITY_GRID * CITY_GRID - 1 - i]; }
 
 void game_init();
 void game_update();
