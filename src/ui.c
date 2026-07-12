@@ -57,6 +57,25 @@ void ui_set_building_tooltip(const City_Building* cb, float x, float y)
     ui_building_tooltip = (UiBuildingTooltip){ true, cb, x, y };
 }
 
+// ── Day-end notification ─────────────────────────────────────────────────
+typedef struct {
+    int   buildings_added;
+    int   people_added;
+    int   buildings_lost;
+    int   people_lost;
+    int   buildings_without_energy;
+    int   people_without_energy;
+} DaySummary;
+
+#define DAY_NOTIFICATION_DURATION 5.0f
+
+typedef struct {
+    bool       active;
+    float      time_remaining;
+    DaySummary summary;
+} DayNotification;
+static DayNotification day_notification;
+
 // ── Slot / drag / drop types ─────────────────────────────────────────────────
 
 #define FACTORY_SLOT_COUNT 7
@@ -910,6 +929,87 @@ static float render_stat_icon(Texture2D icon, Color tint, const char* value_str,
     return ix - spacing;
 }
 
+// Renders the day-end summary notification (bottom-center, fades out after 5 s).
+static void render_day_notification(void)
+{
+    if (!day_notification.active) return;
+
+    day_notification.time_remaining -= GetFrameTime();
+    if (day_notification.time_remaining <= 0.0f) {
+        day_notification.active = false;
+        return;
+    }
+
+    const DaySummary* s = &day_notification.summary;
+
+    char  line_text[3][128];
+    Color line_color[3];
+    int   line_count = 0;
+
+    if (s->buildings_added > 0) {
+        snprintf(line_text[line_count], 128,
+                 "%d new building%s added to the city (%d new habitant%s)",
+                 s->buildings_added, s->buildings_added == 1 ? "" : "s",
+                 s->people_added,    s->people_added    == 1 ? "" : "s");
+        line_color[line_count++] = CLITERAL(Color){  80, 200, 100, 255 };
+    }
+    if (s->buildings_without_energy > 0) {
+        snprintf(line_text[line_count], 128,
+                 "%d people are without power (%d building%s).",
+                 s->people_without_energy,
+                 s->buildings_without_energy, s->buildings_without_energy == 1 ? "" : "s");
+        line_color[line_count++] = CLITERAL(Color){ 200, 160,  30, 255 };
+    }
+    if (s->buildings_lost > 0) {
+        snprintf(line_text[line_count], 128,
+                 "%d building%s destroyed (%d habitant%s left the city)",
+                 s->buildings_lost, s->buildings_lost == 1 ? "" : "s",
+                 s->people_lost,    s->people_lost    == 1 ? "" : "s");
+        line_color[line_count++] = CLITERAL(Color){ 220,  70,  70, 255 };
+    }
+
+    if (line_count == 0) {
+        day_notification.active = false;
+        return;
+    }
+
+    Font* font = font_get(FONT_SIZE_PANEL);
+    const float pad    = 12.0f;
+    const float line_h = font->baseSize + 6.0f;
+
+    float max_w = 0.0f;
+    for (int i = 0; i < line_count; i++) {
+        float w = MeasureTextEx(*font, line_text[i], font->baseSize, 0).x;
+        if (w > max_w) max_w = w;
+    }
+
+    float panel_w = max_w + pad * 2.0f;
+    float panel_h = pad + line_h * line_count - (line_h - font->baseSize) + pad;
+
+    const float btn_radius = 36.0f;
+    const float btn_margin = 14.0f;
+    float panel_x = floorf((WINDOW_WIDTH  - panel_w) * 0.5f);
+    float panel_y = WINDOW_HEIGHT - btn_radius * 2.0f - btn_margin - panel_h - 2.0f;
+
+    float fade        = day_notification.time_remaining < 1.0f ? day_notification.time_remaining : 1.0f;
+    unsigned char bg_a  = (unsigned char)(fade * 210.0f);
+    unsigned char fg_a  = (unsigned char)(fade * 255.0f);
+
+    DrawRectangle((int)panel_x, (int)panel_y, (int)panel_w, (int)panel_h,
+                  CLITERAL(Color){ 30, 30, 30, bg_a });
+    DrawRectangleLinesEx((Rectangle){panel_x, panel_y, panel_w, panel_h}, 1.0f,
+                         CLITERAL(Color){ 80, 80, 80, bg_a });
+
+    float tx = panel_x + pad;
+    float ty = panel_y + pad;
+    for (int i = 0; i < line_count; i++) {
+        Color c = line_color[i];
+        c.a = fg_a;
+        DrawTextEx(*font, line_text[i], (Vector2){tx, ty}, font->baseSize, 0, c);
+        ty += line_h;
+    }
+}
+
 static void render_home_ui(Game* game, bool* factory_menu_open)
 {
     // ── Bottom action buttons ─────────────────────────────────────────────────
@@ -976,6 +1076,8 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
         // At most MAXIMUM_BUILDINGS_TO_BE_REMOVED evictions per day.
         bool any_unmet = false;
         int removed = 0;
+        int sum_bld_lost = 0, sum_ppl_lost = 0;
+        int sum_bld_no_energy = 0, sum_ppl_no_energy = 0;
         for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
             int idx = city_evict_order(i);
             int r = idx / CITY_GRID, c = idx % CITY_GRID;
@@ -984,16 +1086,45 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
             if (b->days_without_energy > 0) {
                 any_unmet = true;
                 if (b->days_without_energy >= DAYS_UNTIL_EVICTION && removed < MAXIMUM_BUILDINGS_TO_BE_REMOVED) {
+                    sum_bld_lost++;
+                    sum_ppl_lost += b->people_living;
                     b->filled = false;
                     b->needed_energy = 0.0f;
                     b->days_without_energy = 0;
                     game->city_size--;
                     removed++;
+                } else {
+                    sum_bld_no_energy++;
+                    sum_ppl_no_energy += b->people_living;
                 }
             }
         }
+        // Snapshot filled state before city growth, then grow
+        bool was_filled[CITY_GRID][CITY_GRID];
+        for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+            int r = i / CITY_GRID, c = i % CITY_GRID;
+            was_filled[r][c] = game->city[r][c].filled;
+        }
         play_random_pitch(sounds.click, 0.1f);
         game_next_day(!any_unmet);
+        // Count buildings and people added by city growth
+        int sum_bld_added = 0, sum_ppl_added = 0;
+        for (int i = 0; i < CITY_GRID * CITY_GRID; i++) {
+            int r = i / CITY_GRID, c = i % CITY_GRID;
+            if (!was_filled[r][c] && game->city[r][c].filled) {
+                sum_bld_added++;
+                sum_ppl_added += game->city[r][c].people_living;
+            }
+        }
+        day_notification = (DayNotification){
+            .active         = true,
+            .time_remaining = DAY_NOTIFICATION_DURATION,
+            .summary = {
+                sum_bld_added,    sum_ppl_added,
+                sum_bld_lost,     sum_ppl_lost,
+                sum_bld_no_energy, sum_ppl_no_energy
+            }
+        };
     }
 
     // ── Top-right status bar ──────────────────────────────────────────────────
@@ -1054,6 +1185,8 @@ static void render_home_ui(Game* game, bool* factory_menu_open)
         str_stored,
         sx, stat_y, stat_icon_size, "City stored energy, ready to use");
     (void)sx;
+
+    render_day_notification();
 }
 
 bool ui_render(const Game* game)
