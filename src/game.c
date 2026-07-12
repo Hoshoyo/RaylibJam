@@ -12,6 +12,23 @@ static Game game;
 static bool ui_hovered_or_active;
 static Vector2 camera_position;
 
+void play_random_pitch(Sound sound, float range)
+{
+    int v = GetRandomValue(-100, 100);
+    float f = ((float)v / 100.0f) * range;
+    SetSoundPitch(sound, 1.0f + f);
+    PlaySound(sound);
+}
+
+void update_city_sound()
+{
+    float value = (game.camera.zoom > 0.4f) ? 0.2f : 0.1f;
+
+    SetSoundVolume(sounds.city[0], sounds.master_volume * value);
+    SetSoundVolume(sounds.city[1], sounds.master_volume * value);
+    SetSoundVolume(sounds.birds, sounds.master_volume * value * 2.5f);
+}
+
 void game_init()
 {
     game.camera.zoom = 0.5f;
@@ -20,6 +37,8 @@ void game_init()
     ui_palette = palette_mountain_ridge;
 
     load_assets();
+    load_sounds();
+    update_city_sound();
 }
 
 void game_update()
@@ -34,8 +53,16 @@ void game_update()
 
     // Zoom control
     float wheel = GetMouseWheelMove();
-    if(wheel > 0 && game.camera.zoom < 2.0f)      game.camera.zoom *= 2.0f;
-    else if(wheel < 0 && game.camera.zoom >= 0.5f) game.camera.zoom /= 2.0f;
+    if(wheel > 0 && game.camera.zoom < 2.0f)
+    {
+        game.camera.zoom *= 2.0f;
+        update_city_sound();
+    }
+    else if(wheel < 0 && game.camera.zoom >= 0.5f)
+    {
+        game.camera.zoom /= 2.0f;
+        update_city_sound();
+    }
 
     // Recenter camera
     Vector2 center = {
@@ -116,10 +143,29 @@ void render_map()
                 Vector2 pole_position = Vector2Add(position, (Vector2){30, 50});
                 render_sprite_static_atlas_offset(&pole_sprite.atlas, pole_sprite.recs[random_pole], pole_offsets[random_pole], pole_position, 0, WHITE);
             }
-            
-            ///DrawRectangleV(position, (Vector2){200, 200}, RED);
-            //DrawRectanglePro((Rectangle){position.x - 200, position.y - 200, 50, 1000}, (Vector2){0}, 45, BLACK);
         }
+    }
+
+    SetRandomSeed((int)(GetTime() * 1000.0f));
+    // Ambient sound
+    if(!IsSoundPlaying(sounds.city[0]) && !IsSoundPlaying(sounds.city[1]))
+    {
+        PlaySound(sounds.city[GetRandomValue(0, ARRAY_LENGTH(sounds.city) - 1)]);
+    }
+    if(!IsSoundPlaying(sounds.birds))
+    {
+        PlaySound(sounds.birds);
+    }
+
+    if(IsKeyPressed('Q'))
+    {
+        play_random_pitch(sounds.click, 0.1f);
+    }
+    if(IsKeyPressed('E'))
+    {
+        int discharge = GetRandomValue(0, ARRAY_LENGTH(sounds.discharge) - 1);
+        //PlaySound(sounds.discharge[discharge]);
+        play_random_pitch(sounds.discharge[discharge], 0.1f);
     }
     #endif
 }
@@ -167,20 +213,13 @@ void game_render()
     
         render_queue_flush();
 
-        //render_map();
+        render_map();
 
         EndMode2D();
 
         render_items();
 
-        static int xx = 0;
-        if(IsKeyPressed('X'))
-        {
-            xx = (xx + 1) % ARRAY_LENGTH(building_offsets);
-        }
-        DrawText(TextFormat("%d", xx), 0, GetScreenHeight() - 40.0f, 20, WHITE);
-        debug_slider(0, &building_offsets[xx].x, -200.0f, 200.0f);
-        debug_slider(1, &building_offsets[xx].y, -200.0f, 200.0f);
+        DrawText(TextFormat("%f", game.camera.zoom), 0, 0, 20, WHITE);
     }
 
     EndDrawing();
